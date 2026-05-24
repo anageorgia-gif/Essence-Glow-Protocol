@@ -83,6 +83,14 @@ type ProductRow = {
   sort_order: number | null;
 };
 
+type FAQRow = {
+  id: string;
+  question: string;
+  answer: string;
+  active: boolean | null;
+  sort_order: number | null;
+};
+
 const fallbackImages: Record<string, string> = {
   termogenico: termogenicoImg,
   "boca-fechada": bocaImg,
@@ -132,6 +140,7 @@ function useAnimatedNumber(value: number, duration = 700) {
 
 function Index() {
   const [formulas, setFormulas] = useState<Formula[]>([]);
+  const [faqs, setFaqs] = useState<FAQRow[]>([]);
   const [loadingFormulas, setLoadingFormulas] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -140,6 +149,7 @@ function Index() {
 
   useEffect(() => {
     loadProducts();
+    loadFaqs();
   }, []);
 
   async function loadProducts() {
@@ -170,6 +180,21 @@ function Index() {
 
     setFormulas(mapped);
     setLoadingFormulas(false);
+  }
+
+  async function loadFaqs() {
+    const { data, error } = await supabase
+      .from("faqs")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setFaqs((data ?? []) as FAQRow[]);
   }
 
   const toggle = (id: string) =>
@@ -231,7 +256,7 @@ function Index() {
           items={items}
         />
       )}
-      <FAQ />
+      <FAQ faqs={faqs} />
       {items.length > 0 && (
         <StickyBar
           count={items.length}
@@ -960,35 +985,13 @@ function Comparison({
   );
 }
 
-const FAQS: { q: string; a: string }[] = [
-  {
-    q: "Como funciona a montagem do protocolo?",
-    a: "Você seleciona as fórmulas que combinam com seu momento e o desconto é aplicado automaticamente. Ao finalizar, o pedido é enviado direto para a central da Farmácia Evidence via WhatsApp.",
-  },
-  {
-    q: "Os descontos são automáticos?",
-    a: "Sim. 10% a partir de 2 fórmulas, 20% a partir de 3 e 30% no protocolo completo (7 fórmulas) com valor fechado de R$ 889,90.",
-  },
-  {
-    q: "Em quanto tempo recebo as fórmulas?",
-    a: "Após a confirmação do pedido pela central, a manipulação leva em média 2 a 4 dias úteis. A entrega é combinada conforme sua localização.",
-  },
-  {
-    q: "Como funciona a entrega?",
-    a: "Entrega grátis a partir de R$ 500,00 para toda Fortaleza. Abaixo desse valor, taxa de R$ 10,00 para bairros de Fortaleza. Enviamos para todo o Brasil e para o exterior. Para regiões metropolitanas do Ceará como Eusébio, Maranguape e Caucaia, o frete é calculado pela nossa central de atendimento.",
-  },
-  {
-    q: "Posso ajustar o protocolo conforme minha rotina?",
-    a: "Pode. As fórmulas são pensadas para se complementarem, mas você pode iniciar pelas que fazem mais sentido para seu objetivo agora.",
-  },
-  {
-    q: "Quais formas de pagamento são aceitas?",
-    a: "PIX, débito e crédito. O protocolo completo pode ser parcelado em até 5x sem juros; demais combinações em até 3x. A condição final é confirmada pela central no atendimento.",
-  },
-];
-
-function FAQ() {
+function FAQ({ faqs }: { faqs: FAQRow[] }) {
   const [open, setOpen] = useState<number | null>(0);
+
+  if (faqs.length === 0) {
+    return null;
+  }
+
   return (
     <section id="faq" className="py-20 md:py-28">
       <div className="mx-auto max-w-3xl px-5">
@@ -1001,11 +1004,11 @@ function FAQ() {
           </h2>
         </div>
         <div className="mt-12 space-y-3">
-          {FAQS.map((f, i) => {
+          {faqs.map((f, i) => {
             const isOpen = open === i;
             return (
               <div
-                key={f.q}
+                key={f.id}
                 className={`rounded-2xl border bg-card transition-all duration-500 ${
                   isOpen ? "border-gold/50 shadow-soft" : "border-border hover:border-gold/30"
                 }`}
@@ -1014,7 +1017,7 @@ function FAQ() {
                   onClick={() => setOpen(isOpen ? null : i)}
                   className="w-full flex items-center justify-between gap-4 px-5 md:px-6 py-5 text-left"
                 >
-                  <span className="font-display text-lg text-navy">{f.q}</span>
+                  <span className="font-display text-lg text-navy">{f.question}</span>
                   <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${isOpen ? "bg-navy text-navy-foreground border-navy" : "border-border text-navy"}`}>
                     {isOpen ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   </span>
@@ -1025,7 +1028,7 @@ function FAQ() {
                 >
                   <div className="overflow-hidden">
                     <p className="px-5 md:px-6 pb-5 text-sm text-muted-foreground leading-relaxed">
-                      {f.a}
+                      {f.answer}
                     </p>
                   </div>
                 </div>

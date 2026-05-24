@@ -17,13 +17,14 @@ import {
   Printer,
   ChevronDown,
   ChevronUp,
+  HelpCircle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Tab = "products" | "orders" | "reports";
+type Tab = "products" | "orders" | "reports" | "faqs";
 
 type Product = {
   id: string;
@@ -69,6 +70,25 @@ type Order = {
   delivery_date: string | null;
   order_items?: OrderItem[];
 };
+
+type FAQ = {
+  id: string;
+  question: string;
+  answer: string;
+  active: boolean;
+  sort_order: number;
+  created_at?: string;
+};
+
+function emptyFaq(): FAQ {
+  return {
+    id: crypto.randomUUID(),
+    question: "",
+    answer: "",
+    active: true,
+    sort_order: 999,
+  };
+}
 
 const STATUS_OPTIONS = [
   { value: "novo", label: "Novo" },
@@ -151,6 +171,7 @@ function AdminPage() {
   const [tab, setTab] = useState<Tab>("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [editingOrders, setEditingOrders] = useState<Record<string, boolean>>({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
@@ -191,7 +212,7 @@ function AdminPage() {
       }
 
       setAuthorized(true);
-      await Promise.all([loadProducts(), loadOrders()]);
+      await Promise.all([loadProducts(), loadOrders(), loadFaqs()]);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -227,6 +248,22 @@ function AdminPage() {
     }
   }
 
+  async function loadFaqs() {
+    const { data, error } = await supabase
+      .from("faqs")
+      .select("*")
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) {
+      setFaqs(data as FAQ[]);
+    }
+  }
+
   async function saveProduct(product: Product) {
     const cleaned = {
       ...product,
@@ -258,6 +295,46 @@ function AdminPage() {
     }
 
     await loadProducts();
+  }
+
+  async function saveFaq(faq: FAQ) {
+    if (!faq.question.trim() || !faq.answer.trim()) {
+      alert("Preencha a pergunta e a resposta antes de salvar.");
+      return;
+    }
+
+    const payload = {
+      id: faq.id,
+      question: faq.question.trim(),
+      answer: faq.answer.trim(),
+      active: faq.active,
+      sort_order: Number(faq.sort_order || 0),
+    };
+
+    const { error } = await supabase.from("faqs").upsert(payload);
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    alert("Dúvida frequente salva!");
+    await loadFaqs();
+  }
+
+  async function deleteFaq(id: string) {
+    const confirmed = confirm("Deseja excluir esta dúvida frequente?");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("faqs").delete().eq("id", id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setFaqs((prev) => prev.filter((faq) => faq.id !== id));
   }
 
   async function saveOrder(order: Order, successMessage = "Pedido atualizado!") {
@@ -365,6 +442,19 @@ function AdminPage() {
               [field]: value,
             }
           : p
+      )
+    );
+  }
+
+  function updateFaq(id: string, field: keyof FAQ, value: any) {
+    setFaqs((prev) =>
+      prev.map((faq) =>
+        faq.id === id
+          ? {
+              ...faq,
+              [field]: value,
+            }
+          : faq
       )
     );
   }
@@ -712,7 +802,9 @@ function AdminPage() {
                 ? "Produtos"
                 : tab === "orders"
                   ? "Pedidos"
-                  : "Relatórios"}
+                  : tab === "reports"
+                    ? "Relatórios"
+                    : "Dúvidas frequentes"}
             </h1>
           </div>
 
@@ -724,6 +816,16 @@ function AdminPage() {
               >
                 <Plus className="h-4 w-4" />
                 Novo produto
+              </button>
+            )}
+
+            {tab === "faqs" && (
+              <button
+                onClick={() => setFaqs((prev) => [...prev, emptyFaq()])}
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gold text-navy font-medium"
+              >
+                <Plus className="h-4 w-4" />
+                Nova dúvida
               </button>
             )}
 
@@ -789,6 +891,16 @@ function AdminPage() {
           >
             <FileSpreadsheet className="h-4 w-4" />
             Relatórios
+          </button>
+
+          <button
+            onClick={() => setTab("faqs")}
+            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+              tab === "faqs" ? "bg-navy text-white" : "bg-card"
+            }`}
+          >
+            <HelpCircle className="h-4 w-4" />
+            Dúvidas frequentes
           </button>
         </div>
 
@@ -1383,6 +1495,114 @@ function AdminPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {tab === "faqs" && (
+          <div className="grid gap-6">
+            {faqs.length === 0 && (
+              <div className="rounded-3xl border bg-card p-8 text-center text-muted-foreground">
+                Nenhuma dúvida frequente cadastrada ainda.
+              </div>
+            )}
+
+            {faqs.map((faq) => (
+              <div key={faq.id} className="rounded-3xl border bg-card p-6 md:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-gold">
+                      Dúvida frequente
+                    </p>
+                    <h2 className="font-display text-2xl text-navy mt-1">
+                      {faq.question || "Nova dúvida"}
+                    </h2>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateFaq(faq.id, "active", !faq.active)}
+                      className={`px-4 py-2 rounded-xl flex items-center gap-2 ${
+                        faq.active
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {faq.active ? (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Visível
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="h-4 w-4" />
+                          Oculta
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => deleteFaq(faq.id)}
+                      className="px-4 py-2 rounded-xl bg-red-100 text-red-700 flex items-center gap-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-[1fr_180px] gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Pergunta
+                    </label>
+                    <input
+                      value={faq.question}
+                      onChange={(e) => updateFaq(faq.id, "question", e.target.value)}
+                      className="border rounded-2xl px-4 py-3 w-full"
+                      placeholder="Ex: Como funciona a entrega?"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Ordem
+                    </label>
+                    <input
+                      type="number"
+                      value={faq.sort_order}
+                      onChange={(e) =>
+                        updateFaq(faq.id, "sort_order", Number(e.target.value))
+                      }
+                      className="border rounded-2xl px-4 py-3 w-full"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium mb-2 block">
+                      Resposta
+                    </label>
+                    <textarea
+                      value={faq.answer}
+                      onChange={(e) => updateFaq(faq.id, "answer", e.target.value)}
+                      className="border rounded-2xl px-4 py-3 min-h-[130px] w-full"
+                      placeholder="Digite a resposta que aparecerá no site"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <button
+                    onClick={() => saveFaq(faq)}
+                    className="px-6 py-3 rounded-2xl bg-navy text-white flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    Salvar dúvida
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

@@ -1,0 +1,221 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Seca Tudo — Larah Nóbrega x Farmácia Evidence
+ * Brand palette: navy + gold + white (extracted from the original PDF)
+ */
+
+@theme inline {
+  --font-display: "Fraunces", "Playfair Display", Georgia, serif;
+  --font-script: "Allura", "Great Vibes", cursive;
+  --font-sans: "Poppins", "Inter", "Helvetica Neue", system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 8px);
+  --radius-2xl: calc(var(--radius) + 18px);
+  --radius-3xl: calc(var(--radius) + 28px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-navy-foreground: var(--navy-foreground);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --shadow-soft: 0 8px 30px -12px color-mix(in oklab, var(--navy) 25%, transparent);
+  --shadow-luxe: 0 30px 60px -25px color-mix(in oklab, var(--navy) 45%, transparent);
+  --shadow-gold: 0 12px 40px -12px color-mix(in oklab, var(--gold) 55%, transparent);
+  --shadow-inset-line: inset 0 0 0 1px color-mix(in oklab, var(--gold) 35%, transparent);
+
+  --gradient-navy: linear-gradient(160deg, oklch(0.24 0.06 260), oklch(0.18 0.07 265));
+  --gradient-gold: linear-gradient(135deg, oklch(0.82 0.13 85), oklch(0.7 0.15 75));
+}
+
+:root {
+  --radius: 1.25rem;
+
+  --background: oklch(0.99 0.005 90);
+  --foreground: oklch(0.2 0.06 265);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.06 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.06 265);
+
+  /* Brand navy as primary */
+  --primary: oklch(0.22 0.07 265);
+  --primary-foreground: oklch(0.98 0.005 90);
+
+  --secondary: oklch(0.96 0.008 90);
+  --secondary-foreground: oklch(0.2 0.06 265);
+
+  --muted: oklch(0.96 0.008 90);
+  --muted-foreground: oklch(0.48 0.025 265);
+
+  --accent: oklch(0.94 0.02 85);
+  --accent-foreground: oklch(0.2 0.06 265);
+
+  --navy: oklch(0.22 0.07 265);
+  --navy-deep: oklch(0.16 0.07 265);
+  --navy-foreground: oklch(0.98 0.005 90);
+
+  --gold: oklch(0.74 0.13 80);
+  --gold-soft: oklch(0.88 0.07 85);
+  --gold-foreground: oklch(0.22 0.07 265);
+
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.98 0.01 85);
+
+  --border: oklch(0.92 0.01 90);
+  --input: oklch(0.92 0.01 90);
+  --ring: oklch(0.74 0.13 80);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .font-display { font-family: var(--font-display); }
+  .font-script { font-family: var(--font-script); }
+  .text-balance { text-wrap: balance; }
+  .bg-navy { background-color: var(--color-navy); }
+  .bg-navy-deep { background-color: var(--color-navy-deep); }
+  .bg-gradient-navy { background-image: var(--gradient-navy); }
+  .bg-gradient-gold { background-image: var(--gradient-gold); }
+  .text-navy { color: var(--color-navy); }
+  .text-gold { color: var(--color-gold); }
+  .border-gold { border-color: var(--color-gold); }
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-luxe { box-shadow: var(--shadow-luxe); }
+  .shadow-gold { box-shadow: var(--shadow-gold); }
+  .ring-gold-line { box-shadow: var(--shadow-inset-line); }
+
+  /* Subtle topographic line texture used across the navy sections */
+  .topo-pattern {
+    background-image:
+      radial-gradient(ellipse at 20% 0%, color-mix(in oklab, var(--gold) 10%, transparent), transparent 60%),
+      radial-gradient(ellipse at 100% 100%, color-mix(in oklab, var(--gold) 8%, transparent), transparent 55%),
+      repeating-radial-gradient(circle at 30% 70%,
+        color-mix(in oklab, var(--gold) 6%, transparent) 0 1px,
+        transparent 1px 22px);
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes slow-zoom {
+    from { transform: scale(1); }
+    to { transform: scale(1.06); }
+  }
+  .animate-fade-up { animation: fade-up 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .animate-slow-zoom { animation: slow-zoom 14s ease-out forwards; }
+  .shimmer-bar {
+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--gold) 55%, transparent), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2.6s linear infinite;
+  }
+
+  @keyframes unlock-pop {
+    0% { opacity: 0; transform: translate(-50%, 20px) scale(0.9); }
+    15% { opacity: 1; transform: translate(-50%, 0) scale(1.02); }
+    85% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -10px) scale(0.98); }
+  }
+  .animate-unlock { animation: unlock-pop 2.6s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+
+  @keyframes pulse-gold {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--gold) 50%, transparent); }
+    50% { box-shadow: 0 0 0 14px color-mix(in oklab, var(--gold) 0%, transparent); }
+  }
+  .animate-pulse-gold { animation: pulse-gold 1.6s ease-out 2; }
+
+  @keyframes float-soft {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .animate-float-soft { animation: float-soft 3.5s ease-in-out infinite; }
+
+  /* Premium pill button used across the page */
+  .btn-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem 1.75rem;
+    border-radius: 999px;
+    font-weight: 500;
+    font-size: 0.8rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    transition: all 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+    will-change: transform;
+  }
+  .btn-pill-light {
+    background: white;
+    color: var(--color-navy);
+    box-shadow: 0 14px 40px -16px color-mix(in oklab, var(--navy) 60%, transparent);
+  }
+  .btn-pill-light:hover { transform: translateY(-2px); box-shadow: 0 22px 50px -18px color-mix(in oklab, var(--navy) 70%, transparent); }
+  .btn-pill-gold {
+    background-image: var(--gradient-gold);
+    color: var(--color-navy);
+    box-shadow: var(--shadow-gold);
+  }
+  .btn-pill-gold:hover { transform: translateY(-2px); }
+  .btn-pill-navy {
+    background-color: var(--color-navy);
+    color: var(--color-navy-foreground);
+    box-shadow: 0 14px 40px -16px color-mix(in oklab, var(--navy) 70%, transparent);
+  }
+  .btn-pill-navy:hover { background-color: var(--color-navy-deep); transform: translateY(-2px); }
+  .btn-pill-outline {
+    border: 1px solid color-mix(in oklab, var(--navy) 18%, transparent);
+    color: var(--color-navy);
+    background: transparent;
+  }
+  .btn-pill-outline:hover { background: color-mix(in oklab, var(--navy) 5%, transparent); }
+}

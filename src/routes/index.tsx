@@ -1085,7 +1085,7 @@ function EvidenceFooter() {
             rel="noopener noreferrer"
             className="text-gold hover:underline"
           >
-            (85) 99733-3556
+            (85) 9235-2755
           </a>
         </p>
         <p className="mt-2 text-[10px] uppercase tracking-[0.3em] text-navy-foreground/40">

@@ -156,4 +156,4 @@ export function nextThreshold(count: number): { needed: number; nextLabel: strin
 }
 
 export const COMPLETE_PROTOCOL_PRICE = 889.9;
-export const WHATSAPP_NUMBER = "5585992232371";
+export const WHATSAPP_NUMBER = "558592352755";

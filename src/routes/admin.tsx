@@ -18,13 +18,14 @@ import {
   ChevronDown,
   ChevronUp,
   HelpCircle,
+  Users,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-type Tab = "products" | "orders" | "reports" | "faqs";
+type Tab = "products" | "orders" | "reports" | "faqs" | "users";
 
 type Product = {
   id: string;
@@ -71,6 +72,17 @@ type Order = {
   order_items?: OrderItem[];
 };
 
+type AdminProfile = {
+  id: string;
+  email: string | null;
+  role: string | null;
+  can_products: boolean | null;
+  can_orders: boolean | null;
+  can_reports: boolean | null;
+  can_faqs: boolean | null;
+  can_users: boolean | null;
+};
+
 type FAQ = {
   id: string;
   question: string;
@@ -80,15 +92,11 @@ type FAQ = {
   created_at?: string;
 };
 
-function emptyFaq(): FAQ {
-  return {
-    id: crypto.randomUUID(),
-    question: "",
-    answer: "",
-    active: true,
-    sort_order: 999,
-  };
-}
+type NewUserForm = {
+  email: string;
+  password: string;
+  role: "vendedor" | "admin_master";
+};
 
 const STATUS_OPTIONS = [
   { value: "novo", label: "Novo" },
@@ -115,6 +123,16 @@ function emptyProduct(): Product {
     benefits: [""],
     formula: [""],
     posology: "",
+    active: true,
+    sort_order: 999,
+  };
+}
+
+function emptyFaq(): FAQ {
+  return {
+    id: crypto.randomUUID(),
+    question: "",
+    answer: "",
     active: true,
     sort_order: 999,
   };
@@ -172,10 +190,25 @@ function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
+  const [users, setUsers] = useState<AdminProfile[]>([]);
+  const [currentProfile, setCurrentProfile] = useState<AdminProfile | null>(null);
+  const [newUser, setNewUser] = useState<NewUserForm>({
+    email: "",
+    password: "",
+    role: "vendedor",
+  });
+  const [creatingUser, setCreatingUser] = useState(false);
   const [editingOrders, setEditingOrders] = useState<Record<string, boolean>>({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+
+  const isMaster = currentProfile?.role === "admin_master";
+  const canProducts = isMaster || currentProfile?.can_products === true;
+  const canOrders = isMaster || currentProfile?.can_orders === true;
+  const canReports = isMaster || currentProfile?.can_reports === true;
+  const canFaqs = isMaster || currentProfile?.can_faqs === true;
+  const canUsers = isMaster || currentProfile?.can_users === true;
 
   useEffect(() => {
     init();
@@ -199,20 +232,37 @@ function AdminPage() {
         return;
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("role")
+        .select("id, email, role, can_products, can_orders, can_reports, can_faqs, can_users")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (data?.role !== "admin") {
+      if (error) {
+        console.error(error);
         setAuthorized(false);
         setLoading(false);
         return;
       }
 
+      const profile = data as AdminProfile | null;
+      const hasAccess =
+        profile?.role === "admin_master" ||
+        profile?.can_products === true ||
+        profile?.can_orders === true ||
+        profile?.can_reports === true ||
+        profile?.can_faqs === true ||
+        profile?.can_users === true;
+
+      if (!hasAccess) {
+        setAuthorized(false);
+        setLoading(false);
+        return;
+      }
+
+      setCurrentProfile(profile);
       setAuthorized(true);
-      await Promise.all([loadProducts(), loadOrders(), loadFaqs()]);
+      await Promise.all([loadProducts(), loadOrders(), loadFaqs(), loadUsers()]);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -248,6 +298,7 @@ function AdminPage() {
     }
   }
 
+
   async function loadFaqs() {
     const { data, error } = await supabase
       .from("faqs")
@@ -261,6 +312,22 @@ function AdminPage() {
 
     if (data) {
       setFaqs(data as FAQ[]);
+    }
+  }
+
+  async function loadUsers() {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, email, role, can_products, can_orders, can_reports, can_faqs, can_users")
+      .order("email", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data) {
+      setUsers(data as AdminProfile[]);
     }
   }
 
@@ -297,13 +364,9 @@ function AdminPage() {
     await loadProducts();
   }
 
-  async function saveFaq(faq: FAQ) {
-    if (!faq.question.trim() || !faq.answer.trim()) {
-      alert("Preencha a pergunta e a resposta antes de salvar.");
-      return;
-    }
 
-    const payload = {
+  async function saveFaq(faq: FAQ) {
+    const cleaned = {
       id: faq.id,
       question: faq.question.trim(),
       answer: faq.answer.trim(),
@@ -311,15 +374,19 @@ function AdminPage() {
       sort_order: Number(faq.sort_order || 0),
     };
 
-    const { error } = await supabase.from("faqs").upsert(payload);
+    if (!cleaned.question || !cleaned.answer) {
+      alert("Preencha a pergunta e a resposta.");
+      return;
+    }
+
+    const { error } = await supabase.from("faqs").upsert(cleaned);
 
     if (error) {
-      console.error(error);
       alert(error.message);
       return;
     }
 
-    alert("Dúvida frequente salva!");
+    alert("Dúvida salva!");
     await loadFaqs();
   }
 
@@ -334,7 +401,45 @@ function AdminPage() {
       return;
     }
 
-    setFaqs((prev) => prev.filter((faq) => faq.id !== id));
+    await loadFaqs();
+  }
+
+  async function createAdminUser() {
+    if (!newUser.email.trim() || !newUser.password.trim()) {
+      alert("Preencha e-mail e senha.");
+      return;
+    }
+
+    if (!canUsers) {
+      alert("Você não tem permissão para criar usuários.");
+      return;
+    }
+
+    setCreatingUser(true);
+
+    const { data, error } = await supabase.functions.invoke("create-admin-user", {
+      body: {
+        email: newUser.email.trim(),
+        password: newUser.password,
+        role: newUser.role,
+      },
+    });
+
+    setCreatingUser(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (data?.error) {
+      alert(data.error);
+      return;
+    }
+
+    alert("Usuário criado com sucesso!");
+    setNewUser({ email: "", password: "", role: "vendedor" });
+    await loadUsers();
   }
 
   async function saveOrder(order: Order, successMessage = "Pedido atualizado!") {
@@ -445,6 +550,7 @@ function AdminPage() {
       )
     );
   }
+
 
   function updateFaq(id: string, field: keyof FAQ, value: any) {
     setFaqs((prev) =>
@@ -804,12 +910,14 @@ function AdminPage() {
                   ? "Pedidos"
                   : tab === "reports"
                     ? "Relatórios"
-                    : "Dúvidas frequentes"}
+                    : tab === "faqs"
+                      ? "Dúvidas frequentes"
+                      : "Usuários"}
             </h1>
           </div>
 
           <div className="flex gap-3">
-            {tab === "products" && (
+            {tab === "products" && canProducts && (
               <button
                 onClick={() => setProducts((prev) => [...prev, emptyProduct()])}
                 className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gold text-navy font-medium"
@@ -819,7 +927,7 @@ function AdminPage() {
               </button>
             )}
 
-            {tab === "faqs" && (
+            {tab === "faqs" && canFaqs && (
               <button
                 onClick={() => setFaqs((prev) => [...prev, emptyFaq()])}
                 className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gold text-navy font-medium"
@@ -829,7 +937,7 @@ function AdminPage() {
               </button>
             )}
 
-            {tab === "reports" && (
+            {tab === "reports" && canReports && (
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={exportCsv}
@@ -863,48 +971,68 @@ function AdminPage() {
         </div>
 
         <div className="mb-8 flex flex-wrap gap-3">
-          <button
-            onClick={() => setTab("products")}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
-              tab === "products" ? "bg-navy text-white" : "bg-card"
-            }`}
-          >
-            <Package className="h-4 w-4" />
-            Produtos
-          </button>
+          {canProducts && (
+            <button
+              onClick={() => setTab("products")}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+                tab === "products" ? "bg-navy text-white" : "bg-card"
+              }`}
+            >
+              <Package className="h-4 w-4" />
+              Produtos
+            </button>
+          )}
 
-          <button
-            onClick={() => setTab("orders")}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
-              tab === "orders" ? "bg-navy text-white" : "bg-card"
-            }`}
-          >
-            <ShoppingBag className="h-4 w-4" />
-            Pedidos
-          </button>
+          {canOrders && (
+            <button
+              onClick={() => setTab("orders")}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+                tab === "orders" ? "bg-navy text-white" : "bg-card"
+              }`}
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Pedidos
+            </button>
+          )}
 
-          <button
-            onClick={() => setTab("reports")}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
-              tab === "reports" ? "bg-navy text-white" : "bg-card"
-            }`}
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            Relatórios
-          </button>
+          {canReports && (
+            <button
+              onClick={() => setTab("reports")}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+                tab === "reports" ? "bg-navy text-white" : "bg-card"
+              }`}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Relatórios
+            </button>
+          )}
 
-          <button
-            onClick={() => setTab("faqs")}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
-              tab === "faqs" ? "bg-navy text-white" : "bg-card"
-            }`}
-          >
-            <HelpCircle className="h-4 w-4" />
-            Dúvidas frequentes
-          </button>
+          {canFaqs && (
+            <button
+              onClick={() => setTab("faqs")}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+                tab === "faqs" ? "bg-navy text-white" : "bg-card"
+              }`}
+            >
+              <HelpCircle className="h-4 w-4" />
+              Dúvidas
+            </button>
+          )}
+
+          {canUsers && (
+            <button
+              onClick={() => setTab("users")}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl border ${
+                tab === "users" ? "bg-navy text-white" : "bg-card"
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Usuários
+            </button>
+          )}
         </div>
 
-        {tab === "products" && (
+        {tab === "products" && canProducts && (
           <div className="grid gap-8">
             {products.map((product) => (
               <div
@@ -1179,7 +1307,7 @@ function AdminPage() {
           </div>
         )}
 
-        {tab === "orders" && (
+        {tab === "orders" && canOrders && (
           <div className="grid gap-4">
             {orders.length === 0 && (
               <div className="rounded-3xl border bg-card p-8 text-center text-muted-foreground">
@@ -1498,115 +1626,7 @@ function AdminPage() {
           </div>
         )}
 
-        {tab === "faqs" && (
-          <div className="grid gap-6">
-            {faqs.length === 0 && (
-              <div className="rounded-3xl border bg-card p-8 text-center text-muted-foreground">
-                Nenhuma dúvida frequente cadastrada ainda.
-              </div>
-            )}
-
-            {faqs.map((faq) => (
-              <div key={faq.id} className="rounded-3xl border bg-card p-6 md:p-8">
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-gold">
-                      Dúvida frequente
-                    </p>
-                    <h2 className="font-display text-2xl text-navy mt-1">
-                      {faq.question || "Nova dúvida"}
-                    </h2>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateFaq(faq.id, "active", !faq.active)}
-                      className={`px-4 py-2 rounded-xl flex items-center gap-2 ${
-                        faq.active
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {faq.active ? (
-                        <>
-                          <Eye className="h-4 w-4" />
-                          Visível
-                        </>
-                      ) : (
-                        <>
-                          <EyeOff className="h-4 w-4" />
-                          Oculta
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => deleteFaq(faq.id)}
-                      className="px-4 py-2 rounded-xl bg-red-100 text-red-700 flex items-center gap-2"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-[1fr_180px] gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Pergunta
-                    </label>
-                    <input
-                      value={faq.question}
-                      onChange={(e) => updateFaq(faq.id, "question", e.target.value)}
-                      className="border rounded-2xl px-4 py-3 w-full"
-                      placeholder="Ex: Como funciona a entrega?"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Ordem
-                    </label>
-                    <input
-                      type="number"
-                      value={faq.sort_order}
-                      onChange={(e) =>
-                        updateFaq(faq.id, "sort_order", Number(e.target.value))
-                      }
-                      className="border rounded-2xl px-4 py-3 w-full"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-sm font-medium mb-2 block">
-                      Resposta
-                    </label>
-                    <textarea
-                      value={faq.answer}
-                      onChange={(e) => updateFaq(faq.id, "answer", e.target.value)}
-                      className="border rounded-2xl px-4 py-3 min-h-[130px] w-full"
-                      placeholder="Digite a resposta que aparecerá no site"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-8 flex justify-end">
-                  <button
-                    onClick={() => saveFaq(faq)}
-                    className="px-6 py-3 rounded-2xl bg-navy text-white flex items-center gap-2"
-                  >
-                    <Save className="h-4 w-4" />
-                    Salvar dúvida
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "reports" && (
+        {tab === "reports" && canReports && (
           <div className="space-y-8">
             <div className="grid md:grid-cols-5 gap-4">
               <InfoCard label="Pedidos recebidos" value={String(orders.length)} />
@@ -1711,6 +1731,208 @@ function AdminPage() {
                         <td className="p-4">{row.dataEntrega || "-"}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {tab === "faqs" && canFaqs && (
+          <div className="grid gap-6">
+            {faqs.length === 0 && (
+              <div className="rounded-3xl border bg-card p-8 text-center text-muted-foreground">
+                Nenhuma dúvida cadastrada ainda.
+              </div>
+            )}
+
+            {faqs.map((faq) => (
+              <div key={faq.id} className="rounded-3xl border bg-card p-6 md:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-gold">
+                      Dúvida frequente
+                    </p>
+                    <h2 className="font-display text-2xl text-navy mt-1">
+                      {faq.question || "Nova dúvida"}
+                    </h2>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateFaq(faq.id, "active", !faq.active)}
+                      className={`px-4 py-2 rounded-xl flex items-center gap-2 ${
+                        faq.active
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {faq.active ? (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Ativa
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="h-4 w-4" />
+                          Oculta
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => deleteFaq(faq.id)}
+                      className="px-4 py-2 rounded-xl bg-red-100 text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Pergunta
+                    </label>
+                    <input
+                      value={faq.question}
+                      onChange={(e) => updateFaq(faq.id, "question", e.target.value)}
+                      className="border rounded-2xl px-4 py-3 w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Resposta
+                    </label>
+                    <textarea
+                      value={faq.answer}
+                      onChange={(e) => updateFaq(faq.id, "answer", e.target.value)}
+                      className="border rounded-2xl px-4 py-3 min-h-[140px] w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Ordem de exibição
+                    </label>
+                    <input
+                      type="number"
+                      value={faq.sort_order}
+                      onChange={(e) => updateFaq(faq.id, "sort_order", Number(e.target.value))}
+                      className="border rounded-2xl px-4 py-3 w-full md:w-56"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => saveFaq(faq)}
+                    className="px-6 py-3 rounded-2xl bg-navy text-white flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    Salvar dúvida
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "users" && canUsers && (
+          <div className="space-y-8">
+            <div className="rounded-3xl border bg-card p-6 md:p-8">
+              <p className="text-xs uppercase tracking-[0.25em] text-gold">
+                Novo usuário
+              </p>
+              <h2 className="font-display text-2xl text-navy mt-1">
+                Criar acesso administrativo
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                Vendedores terão acesso apenas a Produtos e Pedidos. Admin master tem acesso total.
+              </p>
+
+              <div className="grid md:grid-cols-[1fr_1fr_220px] gap-4 mt-6">
+                <EditField
+                  label="E-mail"
+                  value={newUser.email}
+                  onChange={(v) => setNewUser((prev) => ({ ...prev, email: v }))}
+                />
+
+                <EditField
+                  label="Senha temporária"
+                  type="password"
+                  value={newUser.password}
+                  onChange={(v) => setNewUser((prev) => ({ ...prev, password: v }))}
+                />
+
+                <label className="block">
+                  <span className="text-xs text-muted-foreground">Tipo de usuário</span>
+                  <select
+                    value={newUser.role}
+                    onChange={(e) =>
+                      setNewUser((prev) => ({
+                        ...prev,
+                        role: e.target.value as NewUserForm["role"],
+                      }))
+                    }
+                    className="mt-1 w-full border rounded-xl px-4 py-3 bg-white"
+                  >
+                    <option value="vendedor">Vendedor</option>
+                    <option value="admin_master">Admin master</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={createAdminUser}
+                  disabled={creatingUser}
+                  className="px-6 py-3 rounded-2xl bg-navy text-white flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Users className="h-4 w-4" />
+                  {creatingUser ? "Criando..." : "Criar usuário"}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border bg-card overflow-hidden">
+              <div className="p-5 border-b">
+                <h2 className="font-display text-2xl text-navy">Usuários cadastrados</h2>
+                <p className="text-sm text-muted-foreground">
+                  Controle de acessos do painel administrativo.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-secondary/70 text-left">
+                    <tr>
+                      <th className="p-4">E-mail</th>
+                      <th className="p-4">Tipo</th>
+                      <th className="p-4">Produtos</th>
+                      <th className="p-4">Pedidos</th>
+                      <th className="p-4">Relatórios</th>
+                      <th className="p-4">Dúvidas</th>
+                      <th className="p-4">Usuários</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => {
+                      const master = user.role === "admin_master";
+                      return (
+                        <tr key={user.id} className="border-t">
+                          <td className="p-4 font-medium text-navy">{user.email || user.id}</td>
+                          <td className="p-4">{master ? "Admin master" : "Vendedor"}</td>
+                          <td className="p-4">{master || user.can_products ? "Sim" : "Não"}</td>
+                          <td className="p-4">{master || user.can_orders ? "Sim" : "Não"}</td>
+                          <td className="p-4">{master || user.can_reports ? "Sim" : "Não"}</td>
+                          <td className="p-4">{master || user.can_faqs ? "Sim" : "Não"}</td>
+                          <td className="p-4">{master || user.can_users ? "Sim" : "Não"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

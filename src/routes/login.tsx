@@ -9,21 +9,22 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function login() {
-    console.log("URL:", import.meta.env.VITE_SUPABASE_URL);
-    console.log(
-      "KEY:",
-      import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.slice(0, 35)
-    );
+    if (!email.trim() || !password) {
+      alert("Preencha e-mail e senha.");
+      return;
+    }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    setLoading(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
-    console.log("DATA:", data);
-    console.log("ERROR:", error);
+    setLoading(false);
 
     if (error) {
       alert(error.message);
@@ -56,14 +57,18 @@ function LoginPage() {
             placeholder="Senha"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") login();
+            }}
             className="w-full border rounded-xl px-4 py-3"
           />
 
           <button
             onClick={login}
-            className="w-full rounded-xl bg-navy text-white py-3"
+            disabled={loading}
+            className="w-full rounded-xl bg-navy text-white py-3 disabled:opacity-50"
           >
-            Entrar
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </div>
       </div>

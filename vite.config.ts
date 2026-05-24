@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,5 +7,18 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
 
 export default defineConfig({
-  plugins: [tanstackStart(), nitro(), viteReact(), tailwindcss(), tsConfigPaths()],
+  plugins: [
+    tanstackStart(),
+    nitro({
+      preset: "vercel",
+    }),
+    viteReact(),
+    tailwindcss(),
+    tsConfigPaths(),
+  ],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
 });

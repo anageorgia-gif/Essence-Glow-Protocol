@@ -6,20 +6,5 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
 
 export default defineConfig({
-  plugins: [
-    tanstackStart({
-      server: {
-        entry: "server",
-      },
-    }),
-    nitro(),
-    viteReact(),
-    tailwindcss(),
-    tsConfigPaths(),
-  ],
-  resolve: {
-    alias: {
-      "@": "/src",
-    },
-  },
+  plugins: [tanstackStart(), nitro(), viteReact(), tailwindcss(), tsConfigPaths()],
 });

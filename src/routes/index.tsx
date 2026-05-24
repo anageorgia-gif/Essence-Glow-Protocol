@@ -24,9 +24,16 @@ import evidenceLogo from "@/assets/seca/evidence-logo.png";
 import ecobagLifestyle1 from "@/assets/seca/ecobag-lifestyle-1.png";
 import { supabase } from "@/integrations/supabase/client";
 
+import termogenicoImg from "@/assets/seca/termogenico.jpg";
+import bocaImg from "@/assets/seca/boca-fechada.jpg";
+import basicoImg from "@/assets/seca/basico.jpg";
+import sonoImg from "@/assets/seca/sono.jpg";
+import cabeloImg from "@/assets/seca/cabelo.jpg";
+import lipManhaImg from "@/assets/seca/lipedema-manha.jpg";
+import lipNoiteImg from "@/assets/seca/lipedema-noite.jpg";
+
 import { Instagram } from "lucide-react";
 import {
-  FORMULAS,
   getDiscount,
   nextThreshold,
   COMPLETE_PROTOCOL_PRICE,
@@ -62,6 +69,29 @@ export const Route = createFileRoute("/")({
   }),
   component: Index,
 });
+
+type ProductRow = {
+  id: string;
+  name: string;
+  price: number;
+  image_url: string | null;
+  description: string | null;
+  benefits: string[] | null;
+  posology: string | null;
+  formula: string[] | null;
+  active: boolean | null;
+  sort_order: number | null;
+};
+
+const fallbackImages: Record<string, string> = {
+  termogenico: termogenicoImg,
+  "boca-fechada": bocaImg,
+  basico: basicoImg,
+  sono: sonoImg,
+  cabelo: cabeloImg,
+  "lipedema-manha": lipManhaImg,
+  "lipedema-noite": lipNoiteImg,
+};
 
 const benefits = [
   { icon: Activity, label: "Mais disposição" },
@@ -101,10 +131,46 @@ function useAnimatedNumber(value: number, duration = 700) {
 }
 
 function Index() {
+  const [formulas, setFormulas] = useState<Formula[]>([]);
+  const [loadingFormulas, setLoadingFormulas] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
   const prevDiscountRef = useRef(0);
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  async function loadProducts() {
+    setLoadingFormulas(true);
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      setLoadingFormulas(false);
+      return;
+    }
+
+    const mapped = ((data ?? []) as ProductRow[]).map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price ?? 0),
+      image: p.image_url || fallbackImages[p.id] || "",
+      description: p.description ?? "",
+      benefits: p.benefits ?? [],
+      posology: p.posology ?? "",
+      formula: p.formula ?? [],
+    }));
+
+    setFormulas(mapped);
+    setLoadingFormulas(false);
+  }
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -114,15 +180,15 @@ function Index() {
     });
 
   const selectAll = () => {
-    setSelected(new Set(FORMULAS.map((f) => f.id)));
+    setSelected(new Set(formulas.map((f) => f.id)));
     setTimeout(() => {
       document.getElementById("formulas")?.scrollIntoView({ behavior: "smooth" });
     }, 50);
   };
 
-  const items = useMemo(() => FORMULAS.filter((f) => selected.has(f.id)), [selected]);
+  const items = useMemo(() => formulas.filter((f) => selected.has(f.id)), [formulas, selected]);
   const subtotal = items.reduce((s, f) => s + f.price, 0);
-  const isComplete = items.length === 7;
+  const isComplete = formulas.length > 0 && items.length === formulas.length;
   const discount = getDiscount(items.length);
   const total = isComplete ? COMPLETE_PROTOCOL_PRICE : subtotal * (1 - discount);
   const savings = subtotal - total;
@@ -148,16 +214,23 @@ function Index() {
       <IntroBand />
       <Benefits />
       <DiscountSection onSelectAll={selectAll} />
-      <Comparison subtotal={subtotal} total={total} savings={savings} isComplete={isComplete} count={items.length} onSelectAll={selectAll} />
+      <Comparison formulas={formulas} subtotal={subtotal} total={total} savings={savings} isComplete={isComplete} count={items.length} onSelectAll={selectAll} />
       <ExclusividadeEvidence onSelectAll={selectAll} />
       
 
-      <FormulaSection
-        selected={selected}
-        toggle={toggle}
-        threshold={threshold}
-        items={items}
-      />
+      {loadingFormulas ? (
+        <section className="py-20 text-center text-muted-foreground">
+          Carregando fórmulas...
+        </section>
+      ) : (
+        <FormulaSection
+          formulas={formulas}
+          selected={selected}
+          toggle={toggle}
+          threshold={threshold}
+          items={items}
+        />
+      )}
       <FAQ />
       {items.length > 0 && (
         <StickyBar
@@ -572,17 +645,19 @@ function DiscountSection({ onSelectAll }: { onSelectAll: () => void }) {
 }
 
 function FormulaSection({
+  formulas,
   selected,
   toggle,
   threshold,
   items,
 }: {
+  formulas: Formula[];
   selected: Set<string>;
   toggle: (id: string) => void;
   threshold: ReturnType<typeof nextThreshold>;
   items: Formula[];
 }) {
-  const progress = Math.min(items.length / 7, 1) * 100;
+  const progress = formulas.length > 0 ? Math.min(items.length / formulas.length, 1) * 100 : 0;
   return (
     <section id="formulas" className="py-20 md:py-28 bg-secondary/40">
       <div className="mx-auto max-w-6xl px-5">
@@ -618,7 +693,7 @@ function FormulaSection({
         </div>
 
         <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
-          {FORMULAS.map((f) => (
+          {formulas.map((f) => (
             <FormulaCard
               key={f.id}
               formula={f}
@@ -796,6 +871,7 @@ function StickyBar({
 }
 
 function Comparison({
+  formulas,
   subtotal,
   total,
   savings,
@@ -803,6 +879,7 @@ function Comparison({
   count,
   onSelectAll,
 }: {
+  formulas: Formula[];
   subtotal: number;
   total: number;
   savings: number;
@@ -810,7 +887,7 @@ function Comparison({
   count: number;
   onSelectAll: () => void;
 }) {
-  const fullSubtotal = FORMULAS.reduce((s, f) => s + f.price, 0);
+  const fullSubtotal = formulas.reduce((s, f) => s + f.price, 0);
   const fullSavings = fullSubtotal - COMPLETE_PROTOCOL_PRICE;
   const aSavings = useAnimatedNumber(savings);
   const aTotal = useAnimatedNumber(total);
@@ -1347,14 +1424,67 @@ function CheckoutModal({
             disabled={!valid || pdfBusy !== "idle"}
             onClick={async (e) => {
               e.preventDefault();
+
               if (!valid || pdfBusy !== "idle") return;
+
               setPdfBusy("download");
 
-              // Open WhatsApp window synchronously to avoid popup blockers.
-              const waWindow = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+              let waWindow: Window | null = null;
 
               try {
-                // Generate the PDF silently in the background.
+                const finalTotal = isFortaleza ? totalComFrete : totalComEcobag;
+                const discountAmount = savings > 0 ? savings : 0;
+
+                const { data: orderData, error: orderError } = await supabase
+                  .from("orders")
+                  .insert({
+                    customer_name: form.nome,
+                    customer_cpf: form.cpf,
+                    customer_phone: form.whatsapp,
+                    customer_email: form.email || null,
+                    payment_method: form.pagamento,
+                    region: form.regiao,
+                    subtotal,
+                    discount: discountAmount,
+                    total: finalTotal,
+                    status: "novo",
+                  })
+                  .select("id")
+                  .single();
+
+                if (orderError) {
+                  console.error("Erro ao salvar pedido:", orderError);
+                  alert("Erro ao salvar pedido: " + orderError.message);
+                  setPdfBusy("idle");
+                  return;
+                }
+
+                const orderItemsPayload = items.map((item) => ({
+                  order_id: orderData.id,
+                  product_id: item.id,
+                  product_name: item.name,
+                  quantity: 1,
+                  price: Number(item.price),
+                  unit_price: Number(item.price),
+                  total_price: Number(item.price),
+                }));
+
+                console.log("ORDER:", orderData);
+                console.log("ORDER ITEMS PAYLOAD:", orderItemsPayload);
+
+                const { error: itemsError } = await supabase
+                  .from("order_items")
+                  .insert(orderItemsPayload);
+
+                if (itemsError) {
+                  console.error("Erro ao salvar itens:", itemsError);
+                  alert("Erro ao salvar itens: " + itemsError.message);
+                  setPdfBusy("idle");
+                  return;
+                }
+
+                waWindow = window.open(whatsappUrl, "_blank");
+
                 const { blob, filename } = await generateProtocolPdf({
                   patientName: form.nome,
                   patientCpf: form.cpf,
@@ -1363,46 +1493,60 @@ function CheckoutModal({
                   formulas: items,
                 });
 
-                // Encode PDF as base64 for transport to the secure server endpoint.
                 const buf = await blob.arrayBuffer();
                 let binary = "";
                 const bytes = new Uint8Array(buf);
                 const chunk = 0x8000;
+
                 for (let i = 0; i < bytes.length; i += chunk) {
-                  binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+                  binary += String.fromCharCode(
+                    ...bytes.subarray(i, i + chunk)
+                  );
                 }
+
                 const pdfBase64 = btoa(binary);
 
                 await fetch("/api/public/submit-protocol", {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
                   body: JSON.stringify({
+                    order_id: orderData.id,
                     patient_name: form.nome,
                     patient_cpf: form.cpf,
                     patient_phone: form.whatsapp,
                     patient_email: form.email || null,
-                    // Send ONLY ids + metadata for the PDF. Prices, totals
-                    // and ecobag eligibility are recomputed server-side —
-                    // the client is never trusted with pricing.
                     formulas: items.map((f) => ({
                       id: f.id,
+                      name: f.name,
+                      price: f.price,
                       composition: f.formula,
                       posology: f.posology,
                     })),
                     wants_ecobag: addEcobag,
                     payment_method: form.pagamento,
+                    region: form.regiao,
+                    subtotal,
+                    discount: discountAmount,
+                    total: finalTotal,
                     pdf_base64: pdfBase64,
                     pdf_filename: filename,
                   }),
-                }).catch((err) => console.error("Protocol submit failed", err));
-                // Server-side handler also records the ecobag reservation
-                // (with server-derived is_free) — no extra client call needed.
+                }).catch((err) =>
+                  console.error("Protocol submit failed", err)
+                );
+
+                onClose();
               } catch (err) {
                 console.error(err);
+                alert("Erro inesperado ao finalizar pedido.");
               } finally {
                 setPdfBusy("idle");
-                // Fallback: if popup was blocked, navigate in same tab.
-                if (!waWindow) window.location.href = whatsappUrl;
+
+                if (!waWindow && valid) {
+                  window.location.href = whatsappUrl;
+                }
               }
             }}
             className={`btn-pill btn-pill-navy w-full text-center ${!valid || pdfBusy !== "idle" ? "opacity-40 pointer-events-none" : ""}`}

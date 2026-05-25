@@ -244,26 +244,6 @@ function buildHtml(input: ProtocolPdfInput, letterheadDataUrl: string): string {
   </div>`;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-async function imageToDataUrl(src: string): Promise<string> {
-  const res = await fetch(src);
-  const blob = await res.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
 async function ensurePoppinsLoaded(): Promise<void> {
   try {
     // @ts-ignore

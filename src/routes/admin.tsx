@@ -607,10 +607,17 @@ function AdminPage() {
       order_items: [...(order.order_items ?? []), insertedItem as OrderItem],
     };
     const totals = recalculateOrderTotals(updatedOrder);
+    const hadPrescription = Boolean(order.prescription_pdf_path);
+
+    const orderUpdatePayload: Record<string, unknown> = { ...totals };
+    if (hadPrescription) {
+      orderUpdatePayload.prescription_pdf_path = null;
+      orderUpdatePayload.prescription_pdf_filename = null;
+    }
 
     const { error: orderError } = await supabase
       .from("orders")
-      .update(totals)
+      .update(orderUpdatePayload)
       .eq("id", order.id);
 
     setAddingProductOrderId(null);
@@ -621,14 +628,17 @@ function AdminPage() {
       return;
     }
 
+    const refreshedOrder: Order = {
+      ...updatedOrder,
+      ...totals,
+      ...(hadPrescription
+        ? { prescription_pdf_path: null, prescription_pdf_filename: null }
+        : {}),
+    };
+
     setOrders((prev) =>
       prev.map((current) =>
-        current.id === order.id
-          ? {
-              ...updatedOrder,
-              ...totals,
-            }
-          : current
+        current.id === order.id ? refreshedOrder : current
       )
     );
 
@@ -637,7 +647,15 @@ function AdminPage() {
       [order.id]: "",
     }));
 
-    alert("Produto adicionado ao pedido.");
+    if (
+      hadPrescription &&
+      PRESCRIPTION_STATUSES.includes(refreshedOrder.status)
+    ) {
+      await ensurePrescriptionForOrder(refreshedOrder, { downloadOnFailure: false });
+      alert("Produto adicionado e prescrição atualizada.");
+    } else {
+      alert("Produto adicionado ao pedido.");
+    }
   }
 
   async function fetchPrescriptionSignedUrl(orderId: string) {

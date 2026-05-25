@@ -18,6 +18,7 @@ const FormulaPayloadSchema = z.object({
 });
 
 const Schema = z.object({
+  order_id: z.string().uuid().optional(),
   patient_name: z.string().trim().min(2).max(200),
   patient_cpf: z.string().trim().min(6).max(32),
   patient_phone: z.string().trim().min(6).max(32),
@@ -157,6 +158,26 @@ export const Route = createFileRoute("/api/public/submit-protocol")({
           };
         });
 
+        if (data.order_id) {
+          const { data: existingPedido } = await supabaseAdmin
+            .from("pedidos")
+            .select("id, whatsapp_sent")
+            .eq("order_id", data.order_id)
+            .maybeSingle();
+
+          if (existingPedido) {
+            return jsonResponse({
+              ok: true,
+              order_id: existingPedido.id,
+              subtotal: computed.subtotal,
+              total: computed.total,
+              ecobag: computed.ecobag,
+              whatsapp_sent: existingPedido.whatsapp_sent,
+              duplicate: true,
+            });
+          }
+        }
+
         // --- Decode PDF ---
         let pdfBytes: Uint8Array;
         let cleanBase64: string;
@@ -210,6 +231,7 @@ export const Route = createFileRoute("/api/public/submit-protocol")({
         const { data: inserted, error: insertError } = await supabaseAdmin
           .from("pedidos")
           .insert({
+            order_id: data.order_id ?? null,
             patient_name: data.patient_name,
             patient_cpf: data.patient_cpf,
             patient_phone: data.patient_phone,

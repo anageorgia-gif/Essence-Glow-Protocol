@@ -17,7 +17,6 @@ import {
   Plus,
   Minus,
 } from "lucide-react";
-import { blobToBase64, generateProtocolPdf } from "@/lib/generateProtocolPdf";
 import heroImg from "@/assets/seca/hero.jpg";
 import evidenceLogo from "@/assets/seca/evidence-logo.png";
 
@@ -1142,7 +1141,7 @@ function CheckoutModal({
     pagamento: "PIX",
     regiao: "fortaleza",
   });
-  const [pdfBusy, setPdfBusy] = useState<"idle" | "download" | "print">("idle");
+  const [submitBusy, setSubmitBusy] = useState(false);
   const submitLockRef = useRef(false);
   const completedRef = useRef(false);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
@@ -1434,16 +1433,16 @@ function CheckoutModal({
 
           <button
             type="button"
-            disabled={!valid || pdfBusy !== "idle"}
+            disabled={!valid || submitBusy}
             onClick={async (e) => {
               e.preventDefault();
 
-              if (!valid || pdfBusy !== "idle" || submitLockRef.current || completedRef.current) {
+              if (!valid || submitBusy || submitLockRef.current || completedRef.current) {
                 return;
               }
 
               submitLockRef.current = true;
-              setPdfBusy("download");
+              setSubmitBusy(true);
 
               let waWindow: Window | null = null;
 
@@ -1495,62 +1494,20 @@ function CheckoutModal({
                   return;
                 }
 
-                const orderId = orderResult.order_id;
-
                 waWindow = window.open(whatsappUrl, "_blank");
-
-                try {
-                  const { blob, filename } = await generateProtocolPdf({
-                    patientName: form.nome,
-                    patientCpf: form.cpf,
-                    patientPhone: form.whatsapp,
-                    patientEmail: form.email,
-                    formulas: items,
-                  });
-
-                  const pdfBase64 = await blobToBase64(blob);
-
-                  await fetch("/api/public/submit-protocol", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      order_id: orderId,
-                      patient_name: form.nome,
-                      patient_cpf: form.cpf,
-                      patient_phone: form.whatsapp,
-                      patient_email: form.email || null,
-                      formulas: items.map((f) => ({
-                        id: f.id,
-                        name: f.name,
-                        price: f.price,
-                        composition: f.formula,
-                        posology: f.posology,
-                      })),
-                      wants_ecobag: addEcobag,
-                      payment_method: form.pagamento,
-                      region: form.regiao,
-                      subtotal,
-                      discount: discountAmount,
-                      total: finalTotal,
-                      pdf_base64: pdfBase64,
-                      pdf_filename: filename,
-                    }),
-                  }).catch((err) => console.error("Protocol submit failed", err));
-                } catch (pdfErr) {
-                  console.error("PDF generation/submit failed", pdfErr);
-                }
-
                 completedRef.current = true;
                 onClose();
               } catch (err) {
                 console.error(err);
-                alert("Erro inesperado ao finalizar pedido.");
+                alert(
+                  err instanceof Error
+                    ? err.message
+                    : "Erro inesperado ao finalizar pedido.",
+                );
               } finally {
                 submitLockRef.current = false;
                 if (!completedRef.current) {
-                  setPdfBusy("idle");
+                  setSubmitBusy(false);
                 }
 
                 if (!waWindow && valid) {
@@ -1558,9 +1515,9 @@ function CheckoutModal({
                 }
               }
             }}
-            className={`btn-pill btn-pill-navy w-full text-center ${!valid || pdfBusy !== "idle" ? "opacity-40 pointer-events-none" : ""}`}
+            className={`btn-pill btn-pill-navy w-full text-center ${!valid || submitBusy ? "opacity-40 pointer-events-none" : ""}`}
           >
-            {pdfBusy !== "idle" ? "Enviando…" : "Enviar pedido para a central"}
+            {submitBusy ? "Enviando…" : "Enviar pedido para a central"}
           </button>
           <p className="text-center text-xs text-muted-foreground">
             Seu pedido será encaminhado via WhatsApp à Farmácia Evidence.

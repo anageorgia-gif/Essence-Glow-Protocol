@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { COMPLETE_PROTOCOL_PRICE, getDiscount } from "@/lib/formulas";
 import { generatePrescriptionPdf } from "@/lib/generatePrescriptionPdf";
 import { blobToBase64, downloadBlob, printBlob } from "@/lib/pdf-utils";
 import {
@@ -189,6 +190,39 @@ function getItemTotal(item: OrderItem) {
       (item.unit_price ? item.unit_price * (item.quantity || 1) : item.price ?? 0)
   );
 }
+function getAvailableProductsForOrder(order: Order, catalog: Product[]) {
+  const existingProductIds = new Set(
+    (order.order_items ?? []).map((item) => item.product_id)
+  );
+
+  return catalog.filter(
+    (product) => product.active && !existingProductIds.has(product.id)
+  );
+}
+
+function recalculateOrderTotals(order: Order) {
+  const subtotal = (order.order_items ?? []).reduce(
+    (sum, item) => sum + getItemTotal(item),
+    0
+  );
+  const count = getOrderItemsCount(order);
+  const isComplete = count >= 7;
+  const discountRate = getDiscount(count);
+  const formulaTotal = isComplete
+    ? COMPLETE_PROTOCOL_PRICE
+    : subtotal * (1 - discountRate);
+  const savings = subtotal - formulaTotal;
+  const previousFormulaTotal =
+    Number(order.subtotal || 0) - Number(order.discount || 0);
+  const extras = Number(order.total || 0) - previousFormulaTotal;
+
+  return {
+    subtotal,
+    discount: savings,
+    total: formulaTotal + extras,
+  };
+}
+
 
 function buildPrescriptionFormulas(order: Order, productsById: Map<string, Product>) {
   return (order.order_items ?? []).map((item) => {
@@ -234,6 +268,12 @@ function AdminPage() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [selectedProductByOrder, setSelectedProductByOrder] = useState<
+    Record<string, string>
+  >({});
+  const [addingProductOrderId, setAddingProductOrderId] = useState<string | null>(
+    null
+  );
   const [generatingPrescriptionId, setGeneratingPrescriptionId] = useState<string | null>(
     null,
   );
@@ -512,6 +552,110 @@ function AdminPage() {
 
     alert("Acesso removido.");
     await loadUsers();
+  }
+
+  async function addProductToOrder(order: Order) {
+    const productId = selectedProductByOrder[order.id];
+
+    if (!productId) {
+      alert("Selecione um produto para adicionar.");
+      return;
+    }
+
+    const product = products.find((current) => current.id === productId);
+
+    if (!product) {
+      alert("Produto não encontrado.");
+      return;
+    }
+
+    const alreadyAdded = (order.order_items ?? []).some(
+      (item) => item.product_id === product.id
+    );
+
+    if (alreadyAdded) {
+      alert("Este produto já está no pedido.");
+      return;
+    }
+
+    setAddingProductOrderId(order.id);
+
+    const unitPrice = Number(product.price);
+
+    const { data: insertedItem, error: itemError } = await supabase
+      .from("order_items")
+      .insert({
+        order_id: order.id,
+        product_id: product.id,
+        product_name: product.name,
+        quantity: 1,
+        price: unitPrice,
+        unit_price: unitPrice,
+        total_price: unitPrice,
+      })
+      .select("*")
+      .single();
+
+    if (itemError || !insertedItem) {
+      setAddingProductOrderId(null);
+      alert(itemError?.message ?? "Erro ao adicionar produto.");
+      return;
+    }
+
+    const updatedOrder: Order = {
+      ...order,
+      order_items: [...(order.order_items ?? []), insertedItem as OrderItem],
+    };
+    const totals = recalculateOrderTotals(updatedOrder);
+    const hadPrescription = Boolean(order.prescription_pdf_path);
+
+    const orderUpdatePayload: Record<string, unknown> = { ...totals };
+    if (hadPrescription) {
+      orderUpdatePayload.prescription_pdf_path = null;
+      orderUpdatePayload.prescription_pdf_filename = null;
+    }
+
+    const { error: orderError } = await supabase
+      .from("orders")
+      .update(orderUpdatePayload)
+      .eq("id", order.id);
+
+    setAddingProductOrderId(null);
+
+    if (orderError) {
+      alert(orderError.message);
+      await loadOrders();
+      return;
+    }
+
+    const refreshedOrder: Order = {
+      ...updatedOrder,
+      ...totals,
+      ...(hadPrescription
+        ? { prescription_pdf_path: null, prescription_pdf_filename: null }
+        : {}),
+    };
+
+    setOrders((prev) =>
+      prev.map((current) =>
+        current.id === order.id ? refreshedOrder : current
+      )
+    );
+
+    setSelectedProductByOrder((prev) => ({
+      ...prev,
+      [order.id]: "",
+    }));
+
+    if (
+      hadPrescription &&
+      PRESCRIPTION_STATUSES.includes(refreshedOrder.status)
+    ) {
+      await ensurePrescriptionForOrder(refreshedOrder, { downloadOnFailure: false });
+      alert("Produto adicionado e prescrição atualizada.");
+    } else {
+      alert("Produto adicionado ao pedido.");
+    }
   }
 
   async function fetchPrescriptionSignedUrl(orderId: string) {
@@ -1554,6 +1698,9 @@ function AdminPage() {
               const isPrescriptionBusy = prescriptionActionId === order.id;
               const isSaved = savedOrderId === order.id;
               const isExpanded = expandedOrders[order.id] ?? false;
+              const availableProducts = getAvailableProductsForOrder(order, products);
+              const isAddingProduct = addingProductOrderId === order.id;
+              const selectedProductId = selectedProductByOrder[order.id] ?? "";
 
               return (
                 <div
@@ -1799,7 +1946,61 @@ function AdminPage() {
                               </span>
                             </div>
                           ))}
+
+                          {(order.order_items ?? []).length === 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              Nenhum item neste pedido.
+                            </p>
+                          )}
                         </div>
+
+                        {isEditing && (
+                          <div className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4">
+                            <div className="flex-1 min-w-[220px]">
+                              <label className="block text-xs text-muted-foreground mb-1">
+                                Adicionar produto
+                              </label>
+
+                              <select
+                                value={selectedProductId}
+                                onChange={(e) =>
+                                  setSelectedProductByOrder((prev) => ({
+                                    ...prev,
+                                    [order.id]: e.target.value,
+                                  }))
+                                }
+                                disabled={isAddingProduct || availableProducts.length === 0}
+                                className="w-full border rounded-xl px-4 py-3 bg-white disabled:bg-secondary/60"
+                              >
+                                <option value="">
+                                  {availableProducts.length === 0
+                                    ? "Todos os produtos já foram adicionados"
+                                    : "Selecione um produto"}
+                                </option>
+
+                                {availableProducts.map((product) => (
+                                  <option key={product.id} value={product.id}>
+                                    {product.name} — {formatBRL(product.price)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={
+                                !selectedProductId ||
+                                isAddingProduct ||
+                                availableProducts.length === 0
+                              }
+                              onClick={() => addProductToOrder(order)}
+                              className="rounded-xl bg-navy px-4 py-3 text-sm font-medium text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Plus className="h-4 w-4" />
+                              {isAddingProduct ? "Adicionando..." : "Adicionar produto"}
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {(order.prescription_pdf_path ||

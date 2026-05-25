@@ -12,18 +12,32 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function login() {
-  const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
+    if (loading) return;
 
-  if (error) {
-    alert(error.message);
-    return;
+    if (!email.trim() || !password) {
+      alert("Digite e-mail e senha.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setLoading(false);
+
+    console.log("LOGIN DATA:", data);
+    console.log("LOGIN ERROR:", error);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    window.location.assign("/admin");
   }
-
-  window.location.href = "/admin";
-}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-5">
@@ -39,6 +53,7 @@ function LoginPage() {
             type="email"
             placeholder="E-mail"
             value={email}
+            disabled={loading}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full border rounded-xl px-4 py-3"
           />
@@ -47,6 +62,7 @@ function LoginPage() {
             type="password"
             placeholder="Senha"
             value={password}
+            disabled={loading}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") login();
@@ -55,12 +71,13 @@ function LoginPage() {
           />
 
           <button
-  type="button"
-  onClick={login}
-  className="w-full rounded-xl bg-navy text-white py-3"
->
-  Entrar
-</button>
+            type="button"
+            onClick={login}
+            disabled={loading}
+            className="w-full rounded-xl bg-navy text-white py-3 disabled:opacity-50"
+          >
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
         </div>
       </div>
     </div>

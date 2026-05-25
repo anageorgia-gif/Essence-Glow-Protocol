@@ -2,6 +2,8 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { COMPLETE_PROTOCOL_PRICE, getDiscount } from "@/lib/formulas";
+import { generatePrescriptionPdf } from "@/lib/generatePrescriptionPdf";
+import { blobToBase64, downloadBlob, printBlob } from "@/lib/pdf-utils";
 import {
   Plus,
   Trash2,
@@ -16,6 +18,8 @@ import {
   Download,
   Pencil,
   Printer,
+  Loader2,
+  FileText,
   ChevronDown,
   ChevronUp,
   HelpCircle,
@@ -70,6 +74,8 @@ type Order = {
   responsible_name: string | null;
   system_inclusion_date: string | null;
   delivery_date: string | null;
+  prescription_pdf_path: string | null;
+  prescription_pdf_filename: string | null;
   order_items?: OrderItem[];
 };
 
@@ -113,6 +119,7 @@ const STATUS_OPTIONS = [
 
 const CONFIRMED_STATUSES = ["pago", "manipulando", "enviado", "entregue"];
 const NOT_FINALIZED_STATUSES = ["nao_finalizado", "cancelado", "aguardando_pagamento"];
+const PRESCRIPTION_STATUSES = ["pago", "manipulando"];
 
 function emptyProduct(): Product {
   return {
@@ -217,6 +224,31 @@ function recalculateOrderTotals(order: Order) {
 }
 
 
+function buildPrescriptionFormulas(order: Order, productsById: Map<string, Product>) {
+  return (order.order_items ?? []).map((item) => {
+    const product = productsById.get(item.product_id);
+    return {
+      name: item.product_name,
+      composition: product?.formula?.filter(Boolean) ?? [],
+      posology: product?.posology?.trim() || "—",
+    };
+  });
+}
+
+async function getAdminAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) {
+    throw new Error("Sessão expirada. Faça login novamente.");
+  }
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+}
+
 function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
@@ -241,6 +273,16 @@ function AdminPage() {
   >({});
   const [addingProductOrderId, setAddingProductOrderId] = useState<string | null>(
     null
+  );
+  const [generatingPrescriptionId, setGeneratingPrescriptionId] = useState<string | null>(
+    null,
+  );
+  const [prescriptionActionId, setPrescriptionActionId] = useState<string | null>(null);
+  const [prescriptionErrors, setPrescriptionErrors] = useState<Record<string, string>>({});
+
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products],
   );
 
   const isMaster = currentProfile?.role === "admin_master";
@@ -598,6 +640,155 @@ function AdminPage() {
     alert("Produto adicionado ao pedido.");
   }
 
+  async function fetchPrescriptionSignedUrl(orderId: string) {
+    const headers = await getAdminAuthHeaders();
+    const res = await fetch(
+      `/api/admin/orders/prescription-url?order_id=${encodeURIComponent(orderId)}`,
+      { headers },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Não foi possível obter a prescrição.");
+    }
+    return data as { url: string; filename: string };
+  }
+
+  async function refreshOrder(orderId: string) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, order_items(*)")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return null;
+    }
+
+    if (data) {
+      setOrders((prev) =>
+        prev.map((current) => (current.id === orderId ? (data as Order) : current)),
+      );
+      return data as Order;
+    }
+
+    return null;
+  }
+
+  async function ensurePrescriptionForOrder(order: Order, opts?: { downloadOnFailure?: boolean }) {
+    if (order.prescription_pdf_path) return order;
+    if (!PRESCRIPTION_STATUSES.includes(order.status)) return order;
+    if (!(order.order_items ?? []).length) {
+      const message = "Este pedido não possui itens. Não é possível gerar a prescrição.";
+      setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+      alert(message);
+      return order;
+    }
+
+    setGeneratingPrescriptionId(order.id);
+    setPrescriptionErrors((prev) => {
+      const next = { ...prev };
+      delete next[order.id];
+      return next;
+    });
+
+    try {
+      const formulas = buildPrescriptionFormulas(order, productsById);
+      const { blob, filename } = await generatePrescriptionPdf({
+        orderId: order.id,
+        pharmacyOrderNumber: order.pharmacy_order_number,
+        patientName: order.customer_name,
+        patientCpf: order.customer_cpf,
+        formulas,
+      });
+
+      const headers = await getAdminAuthHeaders();
+      const res = await fetch("/api/admin/orders/prescription", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          order_id: order.id,
+          pdf_base64: await blobToBase64(blob),
+          pdf_filename: filename,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          data.error ||
+          "Falha ao salvar a prescrição no servidor. Verifique Supabase e migration.";
+        setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+        if (opts?.downloadOnFailure) {
+          downloadBlob(blob, filename);
+        }
+        throw new Error(message);
+      }
+
+      const refreshed = await refreshOrder(order.id);
+      return refreshed ?? {
+        ...order,
+        prescription_pdf_path: data.prescription_pdf_path,
+        prescription_pdf_filename: data.prescription_pdf_filename,
+      };
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Erro ao gerar a prescrição. O pedido foi salvo normalmente.";
+      setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+      alert(message);
+      return order;
+    } finally {
+      setGeneratingPrescriptionId(null);
+    }
+  }
+
+  async function viewPrescription(order: Order) {
+    if (!order.prescription_pdf_path) return;
+    setPrescriptionActionId(order.id);
+    try {
+      const { url } = await fetchPrescriptionSignedUrl(order.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erro ao abrir prescrição.");
+    } finally {
+      setPrescriptionActionId(null);
+    }
+  }
+
+  async function downloadPrescription(order: Order) {
+    if (!order.prescription_pdf_path) return;
+    setPrescriptionActionId(order.id);
+    try {
+      const { url, filename } = await fetchPrescriptionSignedUrl(order.id);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Falha ao baixar a prescrição.");
+      const blob = await res.blob();
+      downloadBlob(blob, filename);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erro ao baixar prescrição.");
+    } finally {
+      setPrescriptionActionId(null);
+    }
+  }
+
+  async function printPrescription(order: Order) {
+    if (!order.prescription_pdf_path) return;
+    setPrescriptionActionId(order.id);
+    try {
+      const { url } = await fetchPrescriptionSignedUrl(order.id);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Falha ao carregar a prescrição.");
+      const blob = await res.blob();
+      printBlob(blob);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erro ao imprimir prescrição.");
+    } finally {
+      setPrescriptionActionId(null);
+    }
+  }
 
   async function saveOrder(order: Order, successMessage = "Pedido atualizado!") {
     setSavingOrderId(order.id);
@@ -641,6 +832,16 @@ function AdminPage() {
     }));
 
     setSavedOrderId(order.id);
+
+    const updatedOrder = { ...order, ...payload };
+
+    if (
+      PRESCRIPTION_STATUSES.includes(updatedOrder.status) &&
+      !updatedOrder.prescription_pdf_path
+    ) {
+      await ensurePrescriptionForOrder(updatedOrder, { downloadOnFailure: true });
+    }
+
     await loadOrders();
     alert(successMessage);
     return true;
@@ -1475,6 +1676,8 @@ function AdminPage() {
             {orders.map((order) => {
               const isEditing = editingOrders[order.id] ?? false;
               const isSaving = savingOrderId === order.id;
+              const isGeneratingPrescription = generatingPrescriptionId === order.id;
+              const isPrescriptionBusy = prescriptionActionId === order.id;
               const isSaved = savedOrderId === order.id;
               const isExpanded = expandedOrders[order.id] ?? false;
               const availableProducts = getAvailableProductsForOrder(order, products);
@@ -1781,6 +1984,83 @@ function AdminPage() {
                           </div>
                         )}
                       </div>
+
+                      {(order.prescription_pdf_path ||
+                        isGeneratingPrescription ||
+                        PRESCRIPTION_STATUSES.includes(order.status)) && (
+                        <div className="mt-5 rounded-2xl border p-4 bg-secondary/20">
+                          <p className="font-medium text-navy mb-3">
+                            Prescrição
+                          </p>
+
+                          {isGeneratingPrescription ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Gerando prescrição...
+                            </div>
+                          ) : order.prescription_pdf_path ? (
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                type="button"
+                                disabled={isPrescriptionBusy}
+                                onClick={() => viewPrescription(order)}
+                                className="px-5 py-3 rounded-2xl bg-navy text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                              >
+                                <Eye className="h-4 w-4" />
+                                Visualizar Prescrição
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isPrescriptionBusy}
+                                onClick={() => printPrescription(order)}
+                                className="px-5 py-3 rounded-2xl border bg-card text-navy text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                              >
+                                <Printer className="h-4 w-4" />
+                                Imprimir
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isPrescriptionBusy}
+                                onClick={() => downloadPrescription(order)}
+                                className="px-5 py-3 rounded-2xl border bg-card text-navy text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                              >
+                                <Download className="h-4 w-4" />
+                                Baixar PDF
+                              </button>
+                            </div>
+                          ) : PRESCRIPTION_STATUSES.includes(order.status) ? (
+                            <div className="space-y-3">
+                              <p className="text-sm text-muted-foreground">
+                                A prescrição é gerada ao salvar como Pago ou Manipulando.
+                                Se não apareceu, clique abaixo para tentar novamente.
+                              </p>
+                              <button
+                                type="button"
+                                disabled={isGeneratingPrescription || isPrescriptionBusy}
+                                onClick={() => ensurePrescriptionForOrder(order, { downloadOnFailure: true })}
+                                className="px-5 py-3 rounded-2xl bg-navy text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                              >
+                                <FileText className="h-4 w-4" />
+                                Gerar prescrição agora
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {prescriptionErrors[order.id] ? (
+                            <p className="mt-3 text-sm text-red-600">
+                              {prescriptionErrors[order.id]}
+                            </p>
+                          ) : null}
+
+                          {order.prescription_pdf_filename ? (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              Arquivo: {order.prescription_pdf_filename}
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
 
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex flex-wrap gap-3">

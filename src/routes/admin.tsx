@@ -18,6 +18,7 @@ import {
   Pencil,
   Printer,
   Loader2,
+  FileText,
   ChevronDown,
   ChevronUp,
   HelpCircle,
@@ -237,6 +238,7 @@ function AdminPage() {
     null,
   );
   const [prescriptionActionId, setPrescriptionActionId] = useState<string | null>(null);
+  const [prescriptionErrors, setPrescriptionErrors] = useState<Record<string, string>>({});
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -525,12 +527,44 @@ function AdminPage() {
     return data as { url: string; filename: string };
   }
 
-  async function ensurePrescriptionForOrder(order: Order) {
+  async function refreshOrder(orderId: string) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, order_items(*)")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return null;
+    }
+
+    if (data) {
+      setOrders((prev) =>
+        prev.map((current) => (current.id === orderId ? (data as Order) : current)),
+      );
+      return data as Order;
+    }
+
+    return null;
+  }
+
+  async function ensurePrescriptionForOrder(order: Order, opts?: { downloadOnFailure?: boolean }) {
     if (order.prescription_pdf_path) return order;
     if (!PRESCRIPTION_STATUSES.includes(order.status)) return order;
-    if (!(order.order_items ?? []).length) return order;
+    if (!(order.order_items ?? []).length) {
+      const message = "Este pedido não possui itens. Não é possível gerar a prescrição.";
+      setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+      alert(message);
+      return order;
+    }
 
     setGeneratingPrescriptionId(order.id);
+    setPrescriptionErrors((prev) => {
+      const next = { ...prev };
+      delete next[order.id];
+      return next;
+    });
 
     try {
       const formulas = buildPrescriptionFormulas(order, productsById);
@@ -556,33 +590,30 @@ function AdminPage() {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || "Falha ao salvar a prescrição.");
+        const message =
+          data.error ||
+          "Falha ao salvar a prescrição no servidor. Verifique Supabase e migration.";
+        setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+        if (opts?.downloadOnFailure) {
+          downloadBlob(blob, filename);
+        }
+        throw new Error(message);
       }
 
-      setOrders((prev) =>
-        prev.map((current) =>
-          current.id === order.id
-            ? {
-                ...current,
-                prescription_pdf_path: data.prescription_pdf_path,
-                prescription_pdf_filename: data.prescription_pdf_filename,
-              }
-            : current,
-        ),
-      );
-
-      return {
+      const refreshed = await refreshOrder(order.id);
+      return refreshed ?? {
         ...order,
         prescription_pdf_path: data.prescription_pdf_path,
         prescription_pdf_filename: data.prescription_pdf_filename,
       };
     } catch (error) {
       console.error(error);
-      alert(
+      const message =
         error instanceof Error
           ? error.message
-          : "Erro ao gerar a prescrição. O pedido foi salvo normalmente.",
-      );
+          : "Erro ao gerar a prescrição. O pedido foi salvo normalmente.";
+      setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+      alert(message);
       return order;
     } finally {
       setGeneratingPrescriptionId(null);
@@ -634,7 +665,7 @@ function AdminPage() {
     }
   }
 
-    async function saveOrder(order: Order, successMessage = "Pedido atualizado!") {
+  async function saveOrder(order: Order, successMessage = "Pedido atualizado!") {
     setSavingOrderId(order.id);
     setSavedOrderId(null);
 
@@ -678,11 +709,12 @@ function AdminPage() {
     setSavedOrderId(order.id);
 
     const updatedOrder = { ...order, ...payload };
+
     if (
       PRESCRIPTION_STATUSES.includes(updatedOrder.status) &&
       !updatedOrder.prescription_pdf_path
     ) {
-      await ensurePrescriptionForOrder(updatedOrder);
+      await ensurePrescriptionForOrder(updatedOrder, { downloadOnFailure: true });
     }
 
     await loadOrders();
@@ -1817,9 +1849,26 @@ function AdminPage() {
                               </button>
                             </div>
                           ) : PRESCRIPTION_STATUSES.includes(order.status) ? (
-                            <p className="text-sm text-muted-foreground">
-                              A prescrição será gerada automaticamente ao salvar o pedido
-                              com status Pago ou Manipulando.
+                            <div className="space-y-3">
+                              <p className="text-sm text-muted-foreground">
+                                A prescrição é gerada ao salvar como Pago ou Manipulando.
+                                Se não apareceu, clique abaixo para tentar novamente.
+                              </p>
+                              <button
+                                type="button"
+                                disabled={isGeneratingPrescription || isPrescriptionBusy}
+                                onClick={() => ensurePrescriptionForOrder(order, { downloadOnFailure: true })}
+                                className="px-5 py-3 rounded-2xl bg-navy text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                              >
+                                <FileText className="h-4 w-4" />
+                                Gerar prescrição agora
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {prescriptionErrors[order.id] ? (
+                            <p className="mt-3 text-sm text-red-600">
+                              {prescriptionErrors[order.id]}
                             </p>
                           ) : null}
 

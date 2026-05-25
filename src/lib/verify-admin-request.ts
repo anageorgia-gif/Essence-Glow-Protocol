@@ -49,12 +49,11 @@ export async function verifyAdminRequest(
     },
   });
 
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-  if (claimsError || !claimsData?.claims?.sub) {
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  const userId = userData.user?.id;
+  if (userError || !userId) {
     return { ok: false, response: jsonResponse({ error: "Unauthorized" }, 401) };
   }
-
-  const userId = claimsData.claims.sub;
 
   const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles" as never)

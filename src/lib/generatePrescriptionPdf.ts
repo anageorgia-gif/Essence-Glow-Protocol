@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas-pro";
 import letterhead from "@/assets/prescription/letterhead.jpg";
+import nutritionistStamp from "@/assets/prescription/nutritionist-stamp.png";
 import {
   buildPrescriptionFilename,
   getOrderNumberLabel,
@@ -21,8 +22,6 @@ export type PrescriptionPdfInput = {
   patientCpf: string;
   formulas: PrescriptionFormula[];
 };
-
-const NUTRITIONIST = { name: "Larah Nóbrega", crn: "CRN 6197CE" };
 
 function todayLong(): string {
   const months = [
@@ -57,7 +56,11 @@ async function ensurePrescriptionFontsLoaded(): Promise<void> {
   }
 }
 
-function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): string {
+function buildHtml(
+  input: PrescriptionPdfInput,
+  letterheadDataUrl: string,
+  stampDataUrl: string,
+): string {
   const orderNumber = getOrderNumberLabel(input.pharmacyOrderNumber, input.orderId);
   const itemNames = input.formulas.map((f) => f.name);
   const protocolName = getProtocolName(input.formulas.length, itemNames);
@@ -95,7 +98,7 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
         background-size: 100% 100%;
         background-repeat: no-repeat;
         background-color: #ffffff;
-        padding: 190px 64px 150px 64px;
+        padding: 190px 64px 130px 64px;
         -webkit-print-color-adjust: exact;
       }
       .meta {
@@ -177,21 +180,14 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
         font-size: 12pt;
       }
       .signature {
-        margin-top: 36px;
+        margin-top: 32px;
         text-align: center;
       }
-      .sig-line {
-        width: 280px;
-        margin: 0 auto 8px;
-        border-top: 1px solid #1a1a1a;
-      }
-      .sig-name {
-        font-size: 12pt;
-        font-weight: 700;
-      }
-      .sig-role {
-        font-size: 11pt;
-        color: #555;
+      .nutritionist-stamp {
+        width: 220px;
+        max-width: 100%;
+        height: auto;
+        object-fit: contain;
       }
     </style>
     <article class="page">
@@ -224,9 +220,7 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
       ${formulasHtml}
 
       <div class="signature">
-        <div class="sig-line"></div>
-        <div class="sig-name">${escapeHtml(NUTRITIONIST.name)}</div>
-        <div class="sig-role">Nutricionista · ${escapeHtml(NUTRITIONIST.crn)}</div>
+        <img class="nutritionist-stamp" src="${stampDataUrl}" alt="Carimbo Larah Nóbrega" />
       </div>
     </article>
   </div>`;
@@ -235,7 +229,10 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
 export async function generatePrescriptionPdf(
   input: PrescriptionPdfInput,
 ): Promise<{ blob: Blob; filename: string }> {
-  const letterheadDataUrl = await imageToDataUrl(letterhead);
+  const [letterheadDataUrl, stampDataUrl] = await Promise.all([
+    imageToDataUrl(letterhead),
+    imageToDataUrl(nutritionistStamp),
+  ]);
   await ensurePrescriptionFontsLoaded();
 
   const container = document.createElement("div");
@@ -244,7 +241,7 @@ export async function generatePrescriptionPdf(
   container.style.left = "0";
   container.style.width = "794px";
   container.style.background = "#fff";
-  container.innerHTML = buildHtml(input, letterheadDataUrl);
+  container.innerHTML = buildHtml(input, letterheadDataUrl, stampDataUrl);
   document.body.appendChild(container);
 
   try {

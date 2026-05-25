@@ -417,13 +417,13 @@ function AdminPage() {
 
     setCreatingUser(true);
 
-    const { data, error } = await supabase.functions.invoke("create-user", {
-  body: {
-    email: newUser.email.trim(),
-    password: newUser.password,
-    role: newUser.role,
-  },
-});
+    const { data, error } = await supabase.functions.invoke("create-admin-user", {
+      body: {
+        email: newUser.email.trim(),
+        password: newUser.password,
+        role: newUser.role,
+      },
+    });
 
     setCreatingUser(false);
 
@@ -439,6 +439,36 @@ function AdminPage() {
 
     alert("Usuário criado com sucesso!");
     setNewUser({ email: "", password: "", role: "vendedor" });
+    await loadUsers();
+  }
+
+  async function removeUserAccess(user: AdminProfile) {
+    if (user.id === currentProfile?.id) {
+      alert("Você não pode remover seu próprio acesso.");
+      return;
+    }
+
+    const confirmed = confirm(`Remover acesso de ${user.email}?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        role: "bloqueado",
+        can_products: false,
+        can_orders: false,
+        can_reports: false,
+        can_faqs: false,
+        can_users: false,
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Acesso removido.");
     await loadUsers();
   }
 
@@ -1916,6 +1946,7 @@ function AdminPage() {
                       <th className="p-4">Relatórios</th>
                       <th className="p-4">Dúvidas</th>
                       <th className="p-4">Usuários</th>
+                      <th className="p-4">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1930,6 +1961,19 @@ function AdminPage() {
                           <td className="p-4">{master || user.can_reports ? "Sim" : "Não"}</td>
                           <td className="p-4">{master || user.can_faqs ? "Sim" : "Não"}</td>
                           <td className="p-4">{master || user.can_users ? "Sim" : "Não"}</td>
+                          <td className="p-4">
+                            {user.id !== currentProfile?.id ? (
+                              <button
+                                type="button"
+                                onClick={() => removeUserAccess(user)}
+                                className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+                              >
+                                Remover acesso
+                              </button>
+                            ) : (
+                              <span className="text-muted-foreground">Você</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}

@@ -1041,13 +1041,9 @@ function FAQ({ faqs }: { faqs: FAQRow[] }) {
   );
 }
 
-function EvidenceFooter({ padForStickyBar = false }: { padForStickyBar?: boolean }) {
+function EvidenceFooter() {
   return (
-    <footer
-      className={`relative bg-gradient-navy text-navy-foreground pt-20 mt-12 overflow-hidden ${
-        padForStickyBar ? "pb-36" : "pb-20"
-      }`}
-    >
+    <footer className="relative bg-gradient-navy text-navy-foreground py-20 mt-12 mb-24 overflow-hidden">
       <div className="absolute inset-0 topo-pattern opacity-60" aria-hidden />
       <div className="relative mx-auto max-w-3xl px-5 text-center flex flex-col items-center">
         <img
@@ -1115,9 +1111,9 @@ type CheckoutForm = {
 type Regiao = "fortaleza" | "metropolitana" | "brasil" | "exterior";
 
 const REGIOES: { id: Regiao; label: string; hint: string }[] = [
-  { id: "fortaleza", label: "Fortaleza", hint: "Taxa de R$ 10,00 · Grátis acima de R$ 500" },
-  { id: "metropolitana", label: "Eusébio, Maranguape ou Caucaia", hint: "Frete calculado pela central" },
-  { id: "brasil", label: "Outras cidades do Brasil", hint: "Frete calculado pela central" },
+  { id: "fortaleza", label: "Fortaleza", hint: "R$ 10 abaixo de R$ 500 · Grátis acima de R$ 500" },
+  { id: "metropolitana", label: "Eusébio, Maranguape ou Caucaia", hint: "Grátis acima de R$ 500 · Abaixo, calculado pela central" },
+  { id: "brasil", label: "Outras cidades do Brasil", hint: "Grátis acima de R$ 500 · Abaixo, calculado pela central" },
   { id: "exterior", label: "Exterior", hint: "Frete calculado pela central" },
 ];
 
@@ -1183,15 +1179,20 @@ function CheckoutModal({
 
 
   const isFortaleza = form.regiao === "fortaleza";
+  const isBrasil =
+    form.regiao === "fortaleza" ||
+    form.regiao === "metropolitana" ||
+    form.regiao === "brasil";
   const totalComEcobag = total + ecobagValor;
+  const freteGratis = isBrasil && totalComEcobag >= 500;
   const fretePago = isFortaleza && totalComEcobag < 500;
   const freteValor = fretePago ? 10 : 0;
   const totalComFrete = totalComEcobag + freteValor;
-  const freteLabel = isFortaleza
-    ? totalComEcobag >= 500
-      ? "Grátis (pedido acima de R$ 500)"
-      : "R$ 10,00 (Fortaleza)"
-    : "A calcular pela central";
+  const freteLabel = freteGratis
+    ? "Grátis (pedido acima de R$ 500)"
+    : isFortaleza
+      ? "R$ 10,00 (Fortaleza)"
+      : "A calcular pela central";
 
 
   const valid =
@@ -1228,21 +1229,18 @@ function CheckoutModal({
       );
     }
     lines.push(`*Forma de pagamento:* ${form.pagamento}`);
-    if (isFortaleza) {
-      if (totalComEcobag >= 500) {
-        lines.push("*Entrega:* Gratis (pedido acima de R$ 500 em Fortaleza)");
-        if (ecobagIncluded) lines.push(`*Total do pedido:* ${formatBRL(totalComEcobag)}`);
-      } else {
-        lines.push("*Entrega:* Taxa de R$ 10,00 (Fortaleza)");
-        lines.push(`*Total com entrega:* ${formatBRL(totalComFrete)}`);
-      }
-
+    if (form.regiao === "exterior") {
+      lines.push("*Entrega:* Envio internacional - frete calculado pela central");
+    } else if (freteGratis) {
+      lines.push("*Entrega:* Gratis (pedido acima de R$ 500 em todo o Brasil)");
+      if (ecobagIncluded) lines.push(`*Total do pedido:* ${formatBRL(totalComEcobag)}`);
+    } else if (isFortaleza) {
+      lines.push("*Entrega:* Taxa de R$ 10,00 (Fortaleza)");
+      lines.push(`*Total com entrega:* ${formatBRL(totalComFrete)}`);
     } else if (form.regiao === "metropolitana") {
       lines.push("*Entrega:* Eusebio / Maranguape / Caucaia - frete calculado pela central");
-    } else if (form.regiao === "brasil") {
-      lines.push("*Entrega:* Envio para o Brasil - frete calculado pela central");
     } else {
-      lines.push("*Entrega:* Envio internacional - frete calculado pela central");
+      lines.push("*Entrega:* Envio para o Brasil - frete calculado pela central");
     }
     lines.push("");
     lines.push("Pode confirmar meu pedido, por favor?");
@@ -1314,8 +1312,12 @@ function CheckoutModal({
             <div className="flex justify-between font-display text-xl pt-2 text-navy">
               <span>Total</span>
               <span className="tabular-nums">
-                {isFortaleza ? formatBRL(totalComFrete) : formatBRL(totalComEcobag)}
-                {!isFortaleza && <span className="block text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-sans text-right">+ frete a calcular</span>}
+                {formatBRL(isFortaleza ? totalComFrete : totalComEcobag)}
+                {!isFortaleza && !freteGratis && (
+                  <span className="block text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-sans text-right">
+                    + frete a calcular
+                  </span>
+                )}
               </span>
             </div>
 
@@ -1355,12 +1357,13 @@ function CheckoutModal({
               <div className="flex-1">
                 <p className="text-[10px] uppercase tracking-[0.3em] text-gold mb-1">Entrega</p>
                 <p className="font-display text-lg text-navy leading-tight">
-                  Entrega grátis em Fortaleza acima de R$ 500
+                  Entrega grátis em todo o Brasil acima de R$ 500
                 </p>
                 <p className="mt-1.5 text-sm text-navy/80 leading-relaxed">
                   Abaixo desse valor, taxa fixa de <strong>R$ 10,00</strong> para Fortaleza.
-                  Para <strong>Eusébio, Maranguape e Caucaia</strong>, o frete é calculado pela central.
-                  Enviamos também para <strong>todo o Brasil e exterior</strong>.
+                  Para <strong>Eusébio, Maranguape, Caucaia</strong> e demais cidades do Brasil,
+                  o frete é calculado pela central.
+                  Enviamos também para o <strong>exterior</strong>.
                 </p>
               </div>
             </div>

@@ -417,13 +417,13 @@ function AdminPage() {
 
     setCreatingUser(true);
 
-    const { data, error } = await supabase.functions.invoke("create-admin-user", {
-      body: {
-        email: newUser.email.trim(),
-        password: newUser.password,
-        role: newUser.role,
-      },
-    });
+    const { data, error } = await supabase.functions.invoke("create-user", {
+  body: {
+    email: newUser.email.trim(),
+    password: newUser.password,
+    role: newUser.role,
+  },
+});
 
     setCreatingUser(false);
 

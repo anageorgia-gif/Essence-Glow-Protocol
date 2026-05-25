@@ -1143,6 +1143,9 @@ function CheckoutModal({
     regiao: "fortaleza",
   });
   const [pdfBusy, setPdfBusy] = useState<"idle" | "download" | "print">("idle");
+  const submitLockRef = useRef(false);
+  const completedRef = useRef(false);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -1435,8 +1438,11 @@ function CheckoutModal({
             onClick={async (e) => {
               e.preventDefault();
 
-              if (!valid || pdfBusy !== "idle") return;
+              if (!valid || pdfBusy !== "idle" || submitLockRef.current || completedRef.current) {
+                return;
+              }
 
+              submitLockRef.current = true;
               setPdfBusy("download");
 
               let waWindow: Window | null = null;
@@ -1445,9 +1451,22 @@ function CheckoutModal({
                 const finalTotal = isFortaleza ? totalComFrete : totalComEcobag;
                 const discountAmount = savings > 0 ? savings : 0;
 
-                const { data: orderData, error: orderError } = await supabase
-                  .from("orders")
-                  .insert({
+                const orderItemsPayload = items.map((item) => ({
+                  product_id: item.id,
+                  product_name: item.name,
+                  quantity: 1,
+                  price: Number(item.price),
+                  unit_price: Number(item.price),
+                  total_price: Number(item.price),
+                }));
+
+                const orderRes = await fetch("/api/public/create-order", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    idempotency_key: idempotencyKeyRef.current,
                     customer_name: form.nome,
                     customer_cpf: form.cpf,
                     customer_phone: form.whatsapp,
@@ -1457,41 +1476,26 @@ function CheckoutModal({
                     subtotal,
                     discount: discountAmount,
                     total: finalTotal,
-                    status: "novo",
-                  })
-                  .select("id")
-                  .single();
+                    items: orderItemsPayload,
+                  }),
+                });
 
-                if (orderError) {
-                  console.error("Erro ao salvar pedido:", orderError);
-                  alert("Erro ao salvar pedido: " + orderError.message);
-                  setPdfBusy("idle");
+                const orderResult = (await orderRes.json()) as {
+                  ok?: boolean;
+                  order_id?: string;
+                  error?: string;
+                };
+
+                if (!orderRes.ok || !orderResult.order_id) {
+                  console.error("Erro ao salvar pedido:", orderResult);
+                  alert(
+                    orderResult.error ??
+                      "Erro ao salvar pedido. Tente novamente em alguns instantes.",
+                  );
                   return;
                 }
 
-                const orderItemsPayload = items.map((item) => ({
-                  order_id: orderData.id,
-                  product_id: item.id,
-                  product_name: item.name,
-                  quantity: 1,
-                  price: Number(item.price),
-                  unit_price: Number(item.price),
-                  total_price: Number(item.price),
-                }));
-
-                console.log("ORDER:", orderData);
-                console.log("ORDER ITEMS PAYLOAD:", orderItemsPayload);
-
-                const { error: itemsError } = await supabase
-                  .from("order_items")
-                  .insert(orderItemsPayload);
-
-                if (itemsError) {
-                  console.error("Erro ao salvar itens:", itemsError);
-                  alert("Erro ao salvar itens: " + itemsError.message);
-                  setPdfBusy("idle");
-                  return;
-                }
+                const orderId = orderResult.order_id;
 
                 waWindow = window.open(whatsappUrl, "_blank");
 
@@ -1522,7 +1526,7 @@ function CheckoutModal({
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
-                    order_id: orderData.id,
+                    order_id: orderId,
                     patient_name: form.nome,
                     patient_cpf: form.cpf,
                     patient_phone: form.whatsapp,
@@ -1543,16 +1547,20 @@ function CheckoutModal({
                     pdf_base64: pdfBase64,
                     pdf_filename: filename,
                   }),
-                }).catch((err) =>
+                }                ).catch((err) =>
                   console.error("Protocol submit failed", err)
                 );
 
+                completedRef.current = true;
                 onClose();
               } catch (err) {
                 console.error(err);
                 alert("Erro inesperado ao finalizar pedido.");
               } finally {
-                setPdfBusy("idle");
+                submitLockRef.current = false;
+                if (!completedRef.current) {
+                  setPdfBusy("idle");
+                }
 
                 if (!waWindow && valid) {
                   window.location.href = whatsappUrl;

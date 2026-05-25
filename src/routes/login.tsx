@@ -12,27 +12,18 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function login() {
-    if (!email.trim() || !password) {
-      alert("Preencha e-mail e senha.");
-      return;
-    }
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
 
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    window.location.href = "/admin";
+  if (error) {
+    alert(error.message);
+    return;
   }
+
+  window.location.href = "/admin";
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-5">
@@ -64,12 +55,12 @@ function LoginPage() {
           />
 
           <button
-            onClick={login}
-            disabled={loading}
-            className="w-full rounded-xl bg-navy text-white py-3 disabled:opacity-50"
-          >
-            {loading ? "Entrando..." : "Entrar"}
-          </button>
+  type="button"
+  onClick={login}
+  className="w-full rounded-xl bg-navy text-white py-3"
+>
+  Entrar
+</button>
         </div>
       </div>
     </div>

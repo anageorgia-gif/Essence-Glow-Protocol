@@ -119,7 +119,6 @@ const STATUS_OPTIONS = [
 
 const CONFIRMED_STATUSES = ["pago", "manipulando", "enviado", "entregue"];
 const NOT_FINALIZED_STATUSES = ["nao_finalizado", "cancelado", "aguardando_pagamento"];
-const PRESCRIPTION_STATUSES = ["pago", "manipulando"];
 
 function isPrescriptionServerUnavailable(message: string): boolean {
   const lower = message.toLowerCase();
@@ -671,10 +670,7 @@ function AdminPage() {
       [order.id]: "",
     }));
 
-    if (
-      hadPrescription &&
-      PRESCRIPTION_STATUSES.includes(refreshedOrder.status)
-    ) {
+    if (hadPrescription) {
       await ensurePrescriptionForOrder(refreshedOrder, { downloadOnFailure: false });
       alert("Produto adicionado e prescrição atualizada.");
     } else {
@@ -719,7 +715,6 @@ function AdminPage() {
 
   async function ensurePrescriptionForOrder(order: Order, opts?: { downloadOnFailure?: boolean }) {
     if (order.prescription_pdf_path || localPrescriptions[order.id]) return order;
-    if (!PRESCRIPTION_STATUSES.includes(order.status)) return order;
     if (!(order.order_items ?? []).length) {
       const message = "Este pedido não possui itens. Não é possível gerar a prescrição.";
       setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
@@ -940,10 +935,7 @@ function AdminPage() {
 
     const updatedOrder = { ...order, ...payload };
 
-    if (
-      PRESCRIPTION_STATUSES.includes(updatedOrder.status) &&
-      !updatedOrder.prescription_pdf_path
-    ) {
+    if (!updatedOrder.prescription_pdf_path && !localPrescriptions[updatedOrder.id]) {
       await ensurePrescriptionForOrder(updatedOrder, { downloadOnFailure: true });
     }
 
@@ -2094,9 +2086,7 @@ function AdminPage() {
                         )}
                       </div>
 
-                      {(hasPrescription ||
-                        isGeneratingPrescription ||
-                        PRESCRIPTION_STATUSES.includes(order.status)) && (
+                      {(hasPrescription || isGeneratingPrescription || (order.order_items ?? []).length > 0) && (
                         <div className="mt-5 rounded-2xl border p-4 bg-secondary/20">
                           <p className="font-medium text-navy mb-3">
                             Prescrição
@@ -2139,11 +2129,10 @@ function AdminPage() {
                                 Baixar PDF
                               </button>
                             </div>
-                          ) : PRESCRIPTION_STATUSES.includes(order.status) ? (
+                          ) : (order.order_items ?? []).length > 0 ? (
                             <div className="space-y-3">
                               <p className="text-sm text-muted-foreground">
-                                A prescrição é gerada ao salvar como Pago ou Manipulando.
-                                Se não apareceu, clique abaixo para tentar novamente.
+                                Gere a prescrição em PDF a partir dos itens deste pedido.
                               </p>
                               <button
                                 type="button"

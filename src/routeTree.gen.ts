@@ -12,11 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiPublicSubmitProtocolRouteImport } from './routes/api/public/submit-protocol'
 import { Route as ApiPublicEcobagReserveRouteImport } from './routes/api/public/ecobag-reserve'
 import { Route as ApiPublicCreateOrderRouteImport } from './routes/api/public/create-order'
-import { Route as ApiAdminOrdersPrescriptionUrlRouteImport } from './routes/api/admin/orders/prescription-url'
-import { Route as ApiAdminOrdersPrescriptionRouteImport } from './routes/api/admin/orders/prescription'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -33,11 +30,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicSubmitProtocolRoute = ApiPublicSubmitProtocolRouteImport.update({
-  id: '/api/public/submit-protocol',
-  path: '/api/public/submit-protocol',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiPublicEcobagReserveRoute = ApiPublicEcobagReserveRouteImport.update({
   id: '/api/public/ecobag-reserve',
   path: '/api/public/ecobag-reserve',
@@ -48,18 +40,6 @@ const ApiPublicCreateOrderRoute = ApiPublicCreateOrderRouteImport.update({
   path: '/api/public/create-order',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAdminOrdersPrescriptionUrlRoute =
-  ApiAdminOrdersPrescriptionUrlRouteImport.update({
-    id: '/api/admin/orders/prescription-url',
-    path: '/api/admin/orders/prescription-url',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiAdminOrdersPrescriptionRoute =
-  ApiAdminOrdersPrescriptionRouteImport.update({
-    id: '/api/admin/orders/prescription',
-    path: '/api/admin/orders/prescription',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -67,9 +47,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/api/public/create-order': typeof ApiPublicCreateOrderRoute
   '/api/public/ecobag-reserve': typeof ApiPublicEcobagReserveRoute
-  '/api/public/submit-protocol': typeof ApiPublicSubmitProtocolRoute
-  '/api/admin/orders/prescription': typeof ApiAdminOrdersPrescriptionRoute
-  '/api/admin/orders/prescription-url': typeof ApiAdminOrdersPrescriptionUrlRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -77,9 +54,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/api/public/create-order': typeof ApiPublicCreateOrderRoute
   '/api/public/ecobag-reserve': typeof ApiPublicEcobagReserveRoute
-  '/api/public/submit-protocol': typeof ApiPublicSubmitProtocolRoute
-  '/api/admin/orders/prescription': typeof ApiAdminOrdersPrescriptionRoute
-  '/api/admin/orders/prescription-url': typeof ApiAdminOrdersPrescriptionUrlRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -88,9 +62,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/api/public/create-order': typeof ApiPublicCreateOrderRoute
   '/api/public/ecobag-reserve': typeof ApiPublicEcobagReserveRoute
-  '/api/public/submit-protocol': typeof ApiPublicSubmitProtocolRoute
-  '/api/admin/orders/prescription': typeof ApiAdminOrdersPrescriptionRoute
-  '/api/admin/orders/prescription-url': typeof ApiAdminOrdersPrescriptionUrlRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -100,9 +71,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/public/create-order'
     | '/api/public/ecobag-reserve'
-    | '/api/public/submit-protocol'
-    | '/api/admin/orders/prescription'
-    | '/api/admin/orders/prescription-url'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -110,9 +78,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/public/create-order'
     | '/api/public/ecobag-reserve'
-    | '/api/public/submit-protocol'
-    | '/api/admin/orders/prescription'
-    | '/api/admin/orders/prescription-url'
   id:
     | '__root__'
     | '/'
@@ -120,9 +85,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/api/public/create-order'
     | '/api/public/ecobag-reserve'
-    | '/api/public/submit-protocol'
-    | '/api/admin/orders/prescription'
-    | '/api/admin/orders/prescription-url'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -131,9 +93,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiPublicCreateOrderRoute: typeof ApiPublicCreateOrderRoute
   ApiPublicEcobagReserveRoute: typeof ApiPublicEcobagReserveRoute
-  ApiPublicSubmitProtocolRoute: typeof ApiPublicSubmitProtocolRoute
-  ApiAdminOrdersPrescriptionRoute: typeof ApiAdminOrdersPrescriptionRoute
-  ApiAdminOrdersPrescriptionUrlRoute: typeof ApiAdminOrdersPrescriptionUrlRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -159,13 +118,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/submit-protocol': {
-      id: '/api/public/submit-protocol'
-      path: '/api/public/submit-protocol'
-      fullPath: '/api/public/submit-protocol'
-      preLoaderRoute: typeof ApiPublicSubmitProtocolRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/ecobag-reserve': {
       id: '/api/public/ecobag-reserve'
       path: '/api/public/ecobag-reserve'
@@ -180,20 +132,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCreateOrderRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/orders/prescription-url': {
-      id: '/api/admin/orders/prescription-url'
-      path: '/api/admin/orders/prescription-url'
-      fullPath: '/api/admin/orders/prescription-url'
-      preLoaderRoute: typeof ApiAdminOrdersPrescriptionUrlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/orders/prescription': {
-      id: '/api/admin/orders/prescription'
-      path: '/api/admin/orders/prescription'
-      fullPath: '/api/admin/orders/prescription'
-      preLoaderRoute: typeof ApiAdminOrdersPrescriptionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -203,9 +141,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiPublicCreateOrderRoute: ApiPublicCreateOrderRoute,
   ApiPublicEcobagReserveRoute: ApiPublicEcobagReserveRoute,
-  ApiPublicSubmitProtocolRoute: ApiPublicSubmitProtocolRoute,
-  ApiAdminOrdersPrescriptionRoute: ApiAdminOrdersPrescriptionRoute,
-  ApiAdminOrdersPrescriptionUrlRoute: ApiAdminOrdersPrescriptionUrlRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1519,6 +1519,8 @@ function AdminPage() {
             {orders.map((order) => {
               const isEditing = editingOrders[order.id] ?? false;
               const isSaving = savingOrderId === order.id;
+              const isGeneratingPrescription = generatingPrescriptionId === order.id;
+              const isPrescriptionBusy = prescriptionActionId === order.id;
               const isSaved = savedOrderId === order.id;
               const isExpanded = expandedOrders[order.id] ?? false;
 

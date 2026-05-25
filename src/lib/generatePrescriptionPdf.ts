@@ -1,13 +1,19 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas-pro";
 import letterhead from "@/assets/prescription/letterhead.jpg";
-import nutritionistStamp from "@/assets/prescription/nutritionist-stamp.png";
 import {
   buildPrescriptionFilename,
   getOrderNumberLabel,
   getProtocolName,
 } from "@/lib/prescriptionFilename";
 import { escapeHtml, imageToDataUrl } from "@/lib/pdf-utils";
+
+const stampModules = import.meta.glob<{ default: string }>(
+  "@/assets/prescription/nutritionist-stamp.{png,jpg,jpeg,webp,svg}",
+  { eager: true },
+);
+const nutritionistStampUrl: string | null =
+  Object.values(stampModules)[0]?.default ?? null;
 
 export type PrescriptionFormula = {
   name: string;
@@ -22,6 +28,8 @@ export type PrescriptionPdfInput = {
   patientCpf: string;
   formulas: PrescriptionFormula[];
 };
+
+const NUTRITIONIST = { name: "Larah Nóbrega", crn: "CRN 6197CE" };
 
 function todayLong(): string {
   const months = [
@@ -59,7 +67,7 @@ async function ensurePrescriptionFontsLoaded(): Promise<void> {
 function buildHtml(
   input: PrescriptionPdfInput,
   letterheadDataUrl: string,
-  stampDataUrl: string,
+  stampDataUrl: string | null,
 ): string {
   const orderNumber = getOrderNumberLabel(input.pharmacyOrderNumber, input.orderId);
   const itemNames = input.formulas.map((f) => f.name);
@@ -79,6 +87,14 @@ function buildHtml(
         </section>`,
     )
     .join("");
+
+  const signatureHtml = stampDataUrl
+    ? `<img class="nutritionist-stamp" src="${stampDataUrl}" alt="Carimbo Larah Nóbrega" />`
+    : `
+        <div class="sig-line"></div>
+        <div class="sig-name">${escapeHtml(NUTRITIONIST.name)}</div>
+        <div class="sig-role">Nutricionista · ${escapeHtml(NUTRITIONIST.crn)}</div>
+      `;
 
   return `
   <div id="prescription-root">
@@ -184,10 +200,23 @@ function buildHtml(
         text-align: center;
       }
       .nutritionist-stamp {
-        width: 220px;
+        width: 240px;
         max-width: 100%;
         height: auto;
         object-fit: contain;
+      }
+      .sig-line {
+        width: 280px;
+        margin: 0 auto 8px;
+        border-top: 1px solid #1a1a1a;
+      }
+      .sig-name {
+        font-size: 12pt;
+        font-weight: 700;
+      }
+      .sig-role {
+        font-size: 11pt;
+        color: #555;
       }
     </style>
     <article class="page">
@@ -220,7 +249,7 @@ function buildHtml(
       ${formulasHtml}
 
       <div class="signature">
-        <img class="nutritionist-stamp" src="${stampDataUrl}" alt="Carimbo Larah Nóbrega" />
+        ${signatureHtml}
       </div>
     </article>
   </div>`;
@@ -231,7 +260,9 @@ export async function generatePrescriptionPdf(
 ): Promise<{ blob: Blob; filename: string }> {
   const [letterheadDataUrl, stampDataUrl] = await Promise.all([
     imageToDataUrl(letterhead),
-    imageToDataUrl(nutritionistStamp),
+    nutritionistStampUrl
+      ? imageToDataUrl(nutritionistStampUrl)
+      : Promise.resolve<string | null>(null),
   ]);
   await ensurePrescriptionFontsLoaded();
 

@@ -1041,9 +1041,13 @@ function FAQ({ faqs }: { faqs: FAQRow[] }) {
   );
 }
 
-function EvidenceFooter() {
+function EvidenceFooter({ padForStickyBar = false }: { padForStickyBar?: boolean }) {
   return (
-    <footer className="relative bg-gradient-navy text-navy-foreground py-20 mt-12 mb-24 overflow-hidden">
+    <footer
+      className={`relative bg-gradient-navy text-navy-foreground pt-20 mt-12 overflow-hidden ${
+        padForStickyBar ? "pb-36" : "pb-20"
+      }`}
+    >
       <div className="absolute inset-0 topo-pattern opacity-60" aria-hidden />
       <div className="relative mx-auto max-w-3xl px-5 text-center flex flex-col items-center">
         <img

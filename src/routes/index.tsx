@@ -17,7 +17,7 @@ import {
   Plus,
   Minus,
 } from "lucide-react";
-import { generateProtocolPdf } from "@/lib/generateProtocolPdf";
+import { blobToBase64, generateProtocolPdf } from "@/lib/generateProtocolPdf";
 import heroImg from "@/assets/seca/hero.jpg";
 import evidenceLogo from "@/assets/seca/evidence-logo.png";
 
@@ -1499,57 +1499,48 @@ function CheckoutModal({
 
                 waWindow = window.open(whatsappUrl, "_blank");
 
-                const { blob, filename } = await generateProtocolPdf({
-                  patientName: form.nome,
-                  patientCpf: form.cpf,
-                  patientPhone: form.whatsapp,
-                  patientEmail: form.email,
-                  formulas: items,
-                });
+                try {
+                  const { blob, filename } = await generateProtocolPdf({
+                    patientName: form.nome,
+                    patientCpf: form.cpf,
+                    patientPhone: form.whatsapp,
+                    patientEmail: form.email,
+                    formulas: items,
+                  });
 
-                const buf = await blob.arrayBuffer();
-                let binary = "";
-                const bytes = new Uint8Array(buf);
-                const chunk = 0x8000;
+                  const pdfBase64 = await blobToBase64(blob);
 
-                for (let i = 0; i < bytes.length; i += chunk) {
-                  binary += String.fromCharCode(
-                    ...bytes.subarray(i, i + chunk)
-                  );
+                  await fetch("/api/public/submit-protocol", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      order_id: orderId,
+                      patient_name: form.nome,
+                      patient_cpf: form.cpf,
+                      patient_phone: form.whatsapp,
+                      patient_email: form.email || null,
+                      formulas: items.map((f) => ({
+                        id: f.id,
+                        name: f.name,
+                        price: f.price,
+                        composition: f.formula,
+                        posology: f.posology,
+                      })),
+                      wants_ecobag: addEcobag,
+                      payment_method: form.pagamento,
+                      region: form.regiao,
+                      subtotal,
+                      discount: discountAmount,
+                      total: finalTotal,
+                      pdf_base64: pdfBase64,
+                      pdf_filename: filename,
+                    }),
+                  }).catch((err) => console.error("Protocol submit failed", err));
+                } catch (pdfErr) {
+                  console.error("PDF generation/submit failed", pdfErr);
                 }
-
-                const pdfBase64 = btoa(binary);
-
-                await fetch("/api/public/submit-protocol", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    order_id: orderId,
-                    patient_name: form.nome,
-                    patient_cpf: form.cpf,
-                    patient_phone: form.whatsapp,
-                    patient_email: form.email || null,
-                    formulas: items.map((f) => ({
-                      id: f.id,
-                      name: f.name,
-                      price: f.price,
-                      composition: f.formula,
-                      posology: f.posology,
-                    })),
-                    wants_ecobag: addEcobag,
-                    payment_method: form.pagamento,
-                    region: form.regiao,
-                    subtotal,
-                    discount: discountAmount,
-                    total: finalTotal,
-                    pdf_base64: pdfBase64,
-                    pdf_filename: filename,
-                  }),
-                }                ).catch((err) =>
-                  console.error("Protocol submit failed", err)
-                );
 
                 completedRef.current = true;
                 onClose();

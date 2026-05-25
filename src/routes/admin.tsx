@@ -121,6 +121,19 @@ const CONFIRMED_STATUSES = ["pago", "manipulando", "enviado", "entregue"];
 const NOT_FINALIZED_STATUSES = ["nao_finalizado", "cancelado", "aguardando_pagamento"];
 const PRESCRIPTION_STATUSES = ["pago", "manipulando"];
 
+function isPrescriptionServerUnavailable(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("supabase") ||
+    lower.includes("service_role") ||
+    lower.includes("migration") ||
+    lower.includes("storage") ||
+    lower.includes("bucket") ||
+    lower.includes("lovable cloud")
+  );
+}
+
+
 function emptyProduct(): Product {
   return {
     id: crypto.randomUUID(),
@@ -279,6 +292,9 @@ function AdminPage() {
   );
   const [prescriptionActionId, setPrescriptionActionId] = useState<string | null>(null);
   const [prescriptionErrors, setPrescriptionErrors] = useState<Record<string, string>>({});
+  const [localPrescriptions, setLocalPrescriptions] = useState<
+    Record<string, { blob: Blob; filename: string }>
+  >({});
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -636,6 +652,14 @@ function AdminPage() {
         : {}),
     };
 
+    if (hadPrescription) {
+      setLocalPrescriptions((prev) => {
+        const next = { ...prev };
+        delete next[order.id];
+        return next;
+      });
+    }
+
     setOrders((prev) =>
       prev.map((current) =>
         current.id === order.id ? refreshedOrder : current
@@ -694,7 +718,7 @@ function AdminPage() {
   }
 
   async function ensurePrescriptionForOrder(order: Order, opts?: { downloadOnFailure?: boolean }) {
-    if (order.prescription_pdf_path) return order;
+    if (order.prescription_pdf_path || localPrescriptions[order.id]) return order;
     if (!PRESCRIPTION_STATUSES.includes(order.status)) return order;
     if (!(order.order_items ?? []).length) {
       const message = "Este pedido não possui itens. Não é possível gerar a prescrição.";
@@ -720,41 +744,81 @@ function AdminPage() {
         formulas,
       });
 
-      const headers = await getAdminAuthHeaders();
-      const res = await fetch("/api/admin/orders/prescription", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          order_id: order.id,
-          pdf_base64: await blobToBase64(blob),
-          pdf_filename: filename,
-        }),
-      });
+      setLocalPrescriptions((prev) => ({
+        ...prev,
+        [order.id]: { blob, filename },
+      }));
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      try {
+        const headers = await getAdminAuthHeaders();
+        const res = await fetch("/api/admin/orders/prescription", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            order_id: order.id,
+            pdf_base64: await blobToBase64(blob),
+            pdf_filename: filename,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const message =
+            data.error ||
+            "Falha ao salvar a prescrição no servidor.";
+
+          if (isPrescriptionServerUnavailable(message)) {
+            if (opts?.downloadOnFailure) {
+              downloadBlob(blob, filename);
+            }
+            return order;
+          }
+
+          setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
+          if (opts?.downloadOnFailure) {
+            downloadBlob(blob, filename);
+          }
+          return order;
+        }
+
+        setLocalPrescriptions((prev) => {
+          const next = { ...prev };
+          delete next[order.id];
+          return next;
+        });
+
+        const refreshed = await refreshOrder(order.id);
+        return refreshed ?? {
+          ...order,
+          prescription_pdf_path: data.prescription_pdf_path,
+          prescription_pdf_filename: data.prescription_pdf_filename,
+        };
+      } catch (uploadError) {
         const message =
-          data.error ||
-          "Falha ao salvar a prescrição no servidor. Verifique Supabase e migration.";
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Falha ao salvar a prescrição no servidor.";
+
+        if (isPrescriptionServerUnavailable(message)) {
+          if (opts?.downloadOnFailure) {
+            downloadBlob(blob, filename);
+          }
+          return order;
+        }
+
+        console.error(uploadError);
         setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
         if (opts?.downloadOnFailure) {
           downloadBlob(blob, filename);
         }
-        throw new Error(message);
+        return order;
       }
-
-      const refreshed = await refreshOrder(order.id);
-      return refreshed ?? {
-        ...order,
-        prescription_pdf_path: data.prescription_pdf_path,
-        prescription_pdf_filename: data.prescription_pdf_filename,
-      };
     } catch (error) {
       console.error(error);
       const message =
         error instanceof Error
           ? error.message
-          : "Erro ao gerar a prescrição. O pedido foi salvo normalmente.";
+          : "Erro ao gerar a prescrição.";
       setPrescriptionErrors((prev) => ({ ...prev, [order.id]: message }));
       alert(message);
       return order;
@@ -764,9 +828,18 @@ function AdminPage() {
   }
 
   async function viewPrescription(order: Order) {
-    if (!order.prescription_pdf_path) return;
+    const local = localPrescriptions[order.id];
+    if (!order.prescription_pdf_path && !local) return;
+
     setPrescriptionActionId(order.id);
     try {
+      if (local && !order.prescription_pdf_path) {
+        const url = URL.createObjectURL(local.blob);
+        window.open(url, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+
       const { url } = await fetchPrescriptionSignedUrl(order.id);
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (error) {
@@ -777,9 +850,16 @@ function AdminPage() {
   }
 
   async function downloadPrescription(order: Order) {
-    if (!order.prescription_pdf_path) return;
+    const local = localPrescriptions[order.id];
+    if (!order.prescription_pdf_path && !local) return;
+
     setPrescriptionActionId(order.id);
     try {
+      if (local && !order.prescription_pdf_path) {
+        downloadBlob(local.blob, local.filename);
+        return;
+      }
+
       const { url, filename } = await fetchPrescriptionSignedUrl(order.id);
       const res = await fetch(url);
       if (!res.ok) throw new Error("Falha ao baixar a prescrição.");
@@ -793,9 +873,16 @@ function AdminPage() {
   }
 
   async function printPrescription(order: Order) {
-    if (!order.prescription_pdf_path) return;
+    const local = localPrescriptions[order.id];
+    if (!order.prescription_pdf_path && !local) return;
+
     setPrescriptionActionId(order.id);
     try {
+      if (local && !order.prescription_pdf_path) {
+        printBlob(local.blob);
+        return;
+      }
+
       const { url } = await fetchPrescriptionSignedUrl(order.id);
       const res = await fetch(url);
       if (!res.ok) throw new Error("Falha ao carregar a prescrição.");
@@ -1701,6 +1788,10 @@ function AdminPage() {
               const availableProducts = getAvailableProductsForOrder(order, products);
               const isAddingProduct = addingProductOrderId === order.id;
               const selectedProductId = selectedProductByOrder[order.id] ?? "";
+              const localPrescription = localPrescriptions[order.id];
+              const hasPrescription = Boolean(
+                order.prescription_pdf_path || localPrescription,
+              );
 
               return (
                 <div
@@ -2003,7 +2094,7 @@ function AdminPage() {
                         )}
                       </div>
 
-                      {(order.prescription_pdf_path ||
+                      {(hasPrescription ||
                         isGeneratingPrescription ||
                         PRESCRIPTION_STATUSES.includes(order.status)) && (
                         <div className="mt-5 rounded-2xl border p-4 bg-secondary/20">
@@ -2016,7 +2107,7 @@ function AdminPage() {
                               <Loader2 className="h-4 w-4 animate-spin" />
                               Gerando prescrição...
                             </div>
-                          ) : order.prescription_pdf_path ? (
+                          ) : hasPrescription ? (
                             <div className="flex flex-wrap gap-3">
                               <button
                                 type="button"
@@ -2072,9 +2163,9 @@ function AdminPage() {
                             </p>
                           ) : null}
 
-                          {order.prescription_pdf_filename ? (
+                          {(order.prescription_pdf_filename || localPrescription?.filename) ? (
                             <p className="mt-3 text-xs text-muted-foreground">
-                              Arquivo: {order.prescription_pdf_filename}
+                              Arquivo: {order.prescription_pdf_filename || localPrescription?.filename}
                             </p>
                           ) : null}
                         </div>

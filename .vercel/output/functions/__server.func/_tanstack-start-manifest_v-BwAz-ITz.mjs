@@ -1,0 +1,4 @@
+const tsrStartManifest = () => ({ routes: { __root__: { filePath: "/workspace/src/routes/__root.tsx", children: ["/", "/admin", "/login", "/api/public/ecobag-reserve", "/api/public/submit-protocol", "/api/admin/orders/prescription", "/api/admin/orders/prescription-url"], preloads: ["/assets/index-D2i9xzzI.js"] }, "/": { filePath: "/workspace/src/routes/index.tsx", children: void 0, preloads: ["/assets/index-Kx6Q4sU7.js", "/assets/shopping-bag-DuXeXUrL.js", "/assets/client-F_m4IvQ9.js"] }, "/admin": { filePath: "/workspace/src/routes/admin.tsx", children: void 0, preloads: ["/assets/admin-DKqqphvo.js", "/assets/client-F_m4IvQ9.js", "/assets/shopping-bag-DuXeXUrL.js"] }, "/login": { filePath: "/workspace/src/routes/login.tsx", children: void 0, preloads: ["/assets/login-Csd13El5.js", "/assets/client-F_m4IvQ9.js"] } }, clientEntry: "/assets/index-D2i9xzzI.js" });
+export {
+  tsrStartManifest
+};

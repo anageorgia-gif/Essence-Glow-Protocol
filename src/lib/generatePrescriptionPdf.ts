@@ -20,10 +20,9 @@ export type PrescriptionPdfInput = {
   patientName: string;
   patientCpf: string;
   formulas: PrescriptionFormula[];
-  responsibleName: string | null;
-  signatureName?: string;
-  signatureRole?: string;
 };
+
+const NUTRITIONIST = { name: "Larah Nóbrega", crn: "CRN 6197CE" };
 
 function todayLong(): string {
   const months = [
@@ -62,10 +61,6 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
   const orderNumber = getOrderNumberLabel(input.pharmacyOrderNumber, input.orderId);
   const itemNames = input.formulas.map((f) => f.name);
   const protocolName = getProtocolName(input.formulas.length, itemNames);
-  const responsible = input.responsibleName?.trim() || "Farmácia Evidence";
-  const signatureName = input.signatureName?.trim() || responsible;
-  const signatureRole =
-    input.signatureRole?.trim() || "Responsável técnico · Farmácia Evidence";
 
   const formulasHtml = input.formulas
     .map(
@@ -181,10 +176,6 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
         margin: 0;
         font-size: 12pt;
       }
-      .responsible {
-        margin-top: 18px;
-        font-size: 12pt;
-      }
       .signature {
         margin-top: 36px;
         text-align: center;
@@ -206,7 +197,7 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
     <article class="page">
       <div class="meta">${escapeHtml(todayLong())}</div>
       <div class="title">
-        <h1>Prescrição Farmacêutica</h1>
+        <h1>Prescrição</h1>
         <p>Protocolo Seca Tudo · Farmácia Evidence</p>
       </div>
 
@@ -232,14 +223,10 @@ function buildHtml(input: PrescriptionPdfInput, letterheadDataUrl: string): stri
       <p class="section-title">Fórmulas prescritas</p>
       ${formulasHtml}
 
-      <div class="responsible">
-        <strong>Responsável:</strong> ${escapeHtml(responsible)}
-      </div>
-
       <div class="signature">
         <div class="sig-line"></div>
-        <div class="sig-name">${escapeHtml(signatureName)}</div>
-        <div class="sig-role">${escapeHtml(signatureRole)}</div>
+        <div class="sig-name">${escapeHtml(NUTRITIONIST.name)}</div>
+        <div class="sig-role">Nutricionista · ${escapeHtml(NUTRITIONIST.crn)}</div>
       </div>
     </article>
   </div>`;

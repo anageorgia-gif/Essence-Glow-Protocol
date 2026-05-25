@@ -574,7 +574,6 @@ function AdminPage() {
         patientName: order.customer_name,
         patientCpf: order.customer_cpf,
         formulas,
-        responsibleName: order.responsible_name,
       });
 
       const headers = await getAdminAuthHeaders();
@@ -1808,7 +1807,7 @@ function AdminPage() {
                         PRESCRIPTION_STATUSES.includes(order.status)) && (
                         <div className="mt-5 rounded-2xl border p-4 bg-secondary/20">
                           <p className="font-medium text-navy mb-3">
-                            Prescrição farmacêutica
+                            Prescrição
                           </p>
 
                           {isGeneratingPrescription ? (

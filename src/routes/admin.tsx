@@ -183,6 +183,39 @@ function getItemTotal(item: OrderItem) {
       (item.unit_price ? item.unit_price * (item.quantity || 1) : item.price ?? 0)
   );
 }
+function getAvailableProductsForOrder(order: Order, catalog: Product[]) {
+  const existingProductIds = new Set(
+    (order.order_items ?? []).map((item) => item.product_id)
+  );
+
+  return catalog.filter(
+    (product) => product.active && !existingProductIds.has(product.id)
+  );
+}
+
+function recalculateOrderTotals(order: Order) {
+  const subtotal = (order.order_items ?? []).reduce(
+    (sum, item) => sum + getItemTotal(item),
+    0
+  );
+  const count = getOrderItemsCount(order);
+  const isComplete = count >= 7;
+  const discountRate = getDiscount(count);
+  const formulaTotal = isComplete
+    ? COMPLETE_PROTOCOL_PRICE
+    : subtotal * (1 - discountRate);
+  const savings = subtotal - formulaTotal;
+  const previousFormulaTotal =
+    Number(order.subtotal || 0) - Number(order.discount || 0);
+  const extras = Number(order.total || 0) - previousFormulaTotal;
+
+  return {
+    subtotal,
+    discount: savings,
+    total: formulaTotal + extras,
+  };
+}
+
 
 function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -203,6 +236,12 @@ function AdminPage() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [selectedProductByOrder, setSelectedProductByOrder] = useState<
+    Record<string, string>
+  >({});
+  const [addingProductOrderId, setAddingProductOrderId] = useState<string | null>(
+    null
+  );
 
   const isMaster = currentProfile?.role === "admin_master";
   const canProducts = isMaster || currentProfile?.can_products === true;
